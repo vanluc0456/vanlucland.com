@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 48" fill="none">
+  <circle cx="18" cy="24" r="13" fill="#E30613"/>
+  <path d="M12 28L18 16L24 28H20L18 23L16 28H12Z" fill="#FFCC00"/>
+  <text x="38" y="25" font-family="Arial, sans-serif" font-weight="900" font-size="15" fill="#E30613" letter-spacing="1">NAM LONG</text>
+  <text x="38" y="36" font-family="Arial, sans-serif" font-weight="700" font-size="9" fill="#002060" letter-spacing="2">GROUP</text>
+</svg>

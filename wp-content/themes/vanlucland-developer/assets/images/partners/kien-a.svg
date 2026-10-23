@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 48" fill="none">
+  <rect x="6" y="11" width="24" height="24" rx="4" fill="#005696"/>
+  <path d="M13 16V30M13 23L22 16M13 23L22 30" stroke="#F37021" stroke-width="3" stroke-linecap="round"/>
+  <text x="38" y="26" font-family="Arial, sans-serif" font-weight="900" font-size="16" fill="#005696" letter-spacing="1.5">KIẾN Á</text>
+  <text x="38" y="36" font-family="Arial, sans-serif" font-weight="700" font-size="8" fill="#F37021" letter-spacing="2">DEVELOPER</text>
+</svg>

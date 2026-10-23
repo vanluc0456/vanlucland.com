@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 48" fill="none">
+  <circle cx="18" cy="24" r="12" fill="#E1251B"/>
+  <path d="M12 18C15 15 21 15 24 18L18 24L12 18Z" fill="#FFFFFF"/>
+  <text x="36" y="25" font-family="Arial, sans-serif" font-weight="800" font-size="16" fill="#002B49" letter-spacing="0.5">Keppel</text>
+  <text x="36" y="37" font-family="Arial, sans-serif" font-weight="600" font-size="10" fill="#E1251B" letter-spacing="2">LAND</text>
+</svg>

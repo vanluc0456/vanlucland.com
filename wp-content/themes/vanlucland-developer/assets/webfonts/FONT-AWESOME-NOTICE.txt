@@ -1,0 +1,11 @@
+Font Awesome Free 6.5.1
+Copyright 2023 Fonticons, Inc.
+
+This theme contains subsetted Font Awesome Free icon fonts.
+
+Icons: CC BY 4.0
+Fonts: SIL OFL 1.1
+Code: MIT License
+
+License information:
+https://fontawesome.com/license/free

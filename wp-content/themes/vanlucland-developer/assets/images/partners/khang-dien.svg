@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 170 48" fill="none">
+  <rect x="6" y="12" width="22" height="22" rx="4" fill="#008542"/>
+  <path d="M12 17V29M12 23L20 17M12 23L20 29" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="36" y="24" font-family="Arial, sans-serif" font-weight="800" font-size="14" fill="#008542" letter-spacing="1">KHANG ĐIỀN</text>
+  <text x="36" y="36" font-family="Arial, sans-serif" font-weight="600" font-size="9" fill="#003366" letter-spacing="1">HOUSE &amp; REAL ESTATE</text>
+</svg>

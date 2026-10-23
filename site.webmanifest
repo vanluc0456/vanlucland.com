@@ -1,0 +1,24 @@
+{
+  "name": "Văn Lực Land",
+  "short_name": "VanLucLand",
+  "description": "Thông tin quy hoạch, bảng giá, pháp lý và đánh giá chuyên sâu các dự án BĐS trọng điểm tại TP.HCM và khu Nam Sài Gòn.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0F2C59",
+  "theme_color": "#0F2C59",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/wp-content/uploads/2026/07/cropped-vl_header_logo_1_1785485357867-1-e1785485510965-150x150.webp",
+      "sizes": "150x150",
+      "type": "image/webp",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/wp-content/uploads/2026/07/cropped-vl_header_logo_1_1785485357867-1-e1785485510965-300x300.webp",
+      "sizes": "300x300",
+      "type": "image/webp",
+      "purpose": "any maskable"
+    }
+  ]
+}

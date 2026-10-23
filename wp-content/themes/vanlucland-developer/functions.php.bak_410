@@ -1,0 +1,4443 @@
+<?php
+/**
+ * Văn Lực Land Developer Theme Functions
+ */
+
+if (!defined('ABSPATH')) exit;
+
+define('VLD_VERSION', '2.1.8');
+define('VLD_ASSET_VERSION', '2.1.16');
+define('VLD_DIR', get_template_directory());
+define('VLD_URI', get_template_directory_uri());
+
+require_once VLD_DIR . '/inc/hybrid-editor.php';
+require_once VLD_DIR . '/inc/seo-content-tools.php';
+require_once VLD_DIR . '/inc/vld-leads-manager.php';
+require_once VLD_DIR . '/inc/google-indexing-controls.php';
+require_once VLD_DIR . '/inc/legacy-gone-urls.php';
+require_once VLD_DIR . '/inc/seo-auto-repair.php';
+require_once VLD_DIR . '/inc/site-builder.php';
+require_once VLD_DIR . '/inc/real-estate-formatter.php';
+require_once VLD_DIR . '/inc/real-estate-taxonomies.php';
+// Structured data is consolidated into Rank Math via vld_rank_math_schema().
+require_once VLD_DIR . '/inc/real-estate-security.php';
+
+// =====================================================
+// 1. Theme Setup & Gutenberg Hybrid Support
+// =====================================================
+function vld_theme_setup() {
+    add_theme_support('title-tag');
+    add_theme_support('post-thumbnails');
+    add_theme_support('automatic-feed-links');
+    add_theme_support('custom-logo', array(
+        'height' => 80,
+        'width' => 200,
+        'flex-height' => true,
+        'flex-width' => true,
+    ));
+    add_theme_support('html5', array('search-form', 'comment-form', 'comment-list', 'gallery', 'caption'));
+    
+    add_theme_support('align-wide');
+    add_theme_support('responsive-embeds');
+    add_theme_support('editor-styles');
+    add_theme_support('appearance-tools');
+    add_theme_support('custom-spacing');
+    add_editor_style('assets/css/editor.css');
+
+    /*
+     * A project card is full-width on narrow phones and two/three columns
+     * elsewhere. 768px is large enough for Lighthouse's mobile DPR while
+     * avoiding the original 1100px+ upload on a roughly 400px card.
+     */
+    add_image_size('vld-project-card', 480, 300, true);
+    add_image_size('vld-project-card-mobile', 240, 150, true);
+    add_image_size('vld-news-thumb', 120, 80, true);
+    add_image_size('vld-sidebar-thumb', 50, 50, true);
+
+    register_nav_menus(array(
+        'primary' => __('Menu Chính', 'vanlucland-developer'),
+        'mobile'  => __('Menu Mobile', 'vanlucland-developer'),
+    ));
+}
+add_action('after_setup_theme', 'vld_theme_setup');
+
+// =====================================================
+// 2. Enqueue Scripts & Styles
+// =====================================================
+function vld_enqueue_assets() {
+    wp_enqueue_style('vld-icons', VLD_URI . '/assets/css/icons.min.css', array(), VLD_ASSET_VERSION);
+    $use_home_critical_css = is_front_page();
+    if ($use_home_critical_css) {
+        wp_enqueue_style('vld-home-optimized', VLD_URI . '/assets/css/home-optimized.min.css', array(), VLD_ASSET_VERSION);
+    } else {
+        wp_enqueue_style('vld-style', VLD_URI . '/style.min.css', array(), VLD_ASSET_VERSION);
+        wp_enqueue_style('vld-real-estate', VLD_URI . '/assets/css/real-estate-sales.css', array('vld-style'), VLD_ASSET_VERSION);
+    }
+
+    /* Native anchor scrolling avoids synchronous layout reads in JavaScript. */
+    wp_add_inline_style('vld-real-estate', 'html{scroll-padding-top:90px}@media(max-width:767px){html{scroll-padding-top:72px}}');
+
+    /*
+     * Keep the content-integrity patch inline as well as in the source CSS.
+     * LiteSpeed can retain an optimized CSS artifact after a theme file update;
+     * this small, ordered fallback prevents stale UCSS from clipping live text.
+     */
+    wp_add_inline_style(
+        'vld-real-estate',
+        '.project-card .card-meta{height:auto!important;min-height:58px!important;justify-content:flex-start!important;overflow:visible!important}.project-card .card-meta>span{width:100%!important;min-width:0!important;max-width:100%!important;line-height:1.4!important}.project-card .card-meta>.card-location,.project-card .card-meta>span:first-child:not(:last-child){display:-webkit-box!important;white-space:normal!important;overflow:hidden!important;overflow-wrap:anywhere!important;text-overflow:clip!important;-webkit-box-orient:vertical!important;-webkit-line-clamp:2!important}.project-card .card-meta>.card-area,.project-card .card-meta>span:last-child:not(:first-child){white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}@media(max-width:768px){.single-project-page .project-hero-grid{overflow:visible!important}.single-project-page .project-hero-grid>.project-gallery-box,.single-project-page .project-hero-grid>.project-specs-box,.single-project-page .project-gallery-box>*,.single-project-page .project-specs-box>*{width:auto!important;min-width:0!important;max-width:100%!important;box-sizing:border-box!important}}'
+    );
+
+    /* Keep the cloned partner marquee on one row on narrow screens. */
+    wp_add_inline_style(
+        'vld-real-estate',
+        '@media(max-width:768px){#partners-slider{flex-wrap:nowrap!important;justify-content:flex-start!important;height:auto!important;overflow:visible!important}#partners-slider>.partner-card{width:145px!important;min-width:145px!important;max-width:145px!important;height:54px!important;flex:0 0 145px!important;margin:0!important;padding:8px 18px!important;overflow:visible!important}}'
+    );
+
+    /* Bypass stale LiteSpeed UCSS for the compact mobile footer layout. */
+    wp_add_inline_style(
+        'vld-real-estate',
+        '@media(max-width:575px){#colophon .footer-compact-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;column-gap:16px!important;row-gap:10px!important;padding-bottom:8px!important}#colophon .footer-col-brand,#colophon .footer-col-contact{grid-column:1/-1!important}#colophon .footer-col-nav .footer-nav-list a{min-height:32px!important;padding:4px 0!important;line-height:24px!important}#colophon .footer-col-contact a{min-height:28px!important;padding:2px 0!important}#colophon .footer-bottom-bar-light{padding:6px 0!important}}'
+    );
+
+    /* Keep the mobile hero text transparent; only the full-image gradient remains. */
+    wp_add_inline_style(
+        'vld-real-estate',
+        '@media(max-width:575px){#hero .slide-content,#hero .hero-slide-content{background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;border:none!important}}'
+    );
+
+
+    // Keep long-form articles readable while using the full main column.
+    wp_add_inline_style('vld-real-estate', '.single-post .bds8-article-body{max-width:100% !important;margin-inline:0 !important;font-size:17px !important;line-height:1.7 !important;}.single-post .bds8-article-body>p{margin:0 0 16px !important;line-height:1.7 !important;}.single-post .bds8-article-body>h2{font-size:clamp(23px,2.2vw,27px) !important;line-height:1.35 !important;margin:30px 0 12px !important;}.single-post .bds8-article-body>h3{font-size:clamp(19px,1.8vw,22px) !important;line-height:1.4 !important;margin:24px 0 9px !important;}.single-post .bds8-article-body>h4{font-size:17px !important;line-height:1.4 !important;margin:20px 0 7px !important;}.single-post .bds8-article-body>ul,.single-post .bds8-article-body>ol{margin:6px 0 16px 1.4em !important;line-height:1.6 !important;}.single-post .bds8-article-body>ul>li,.single-post .bds8-article-body>ol>li{margin-bottom:6px !important;line-height:1.6 !important;}@media(max-width:767px){.single-post .bds8-article-body{font-size:16px !important;line-height:1.65 !important;}.single-post .bds8-article-body>p{margin-bottom:14px !important;line-height:1.65 !important;}.single-post .bds8-article-body>h2{font-size:22px !important;margin:26px 0 10px !important;}.single-post .bds8-article-body>h3{font-size:19px !important;margin:21px 0 8px !important;}.single-post .bds8-article-body>h4{font-size:16px !important;margin:18px 0 6px !important;}}');
+    wp_add_inline_style('vld-real-estate', '.entry-content a:not(.btn),#vld-toc-toggle-btn{color:#0369a1 !important}.advisor-online-badge{background:#047857 !important;color:#fff !important}.advisor-role-badge{color:#075985 !important}.vld-author-card p:last-child,.res-mini-card:last-child .res-val{color:#0369a1 !important}.res-highlight small{color:#047857 !important}#res-loan-amount{color:#0f2c59 !important}#sub-promo-phase{color:#334155 !important}.vld-support-heading{margin:20px 0 8px;color:#0f2c59;font-weight:800;line-height:1.4}.single-project-page .single-entry-content,.single-project-page .single-entry-content p{font-size:16px !important;line-height:1.65 !important}.single-project-page .single-entry-content p{margin-bottom:14px !important}.single-project-page .single-entry-content h2{font-size:22px !important;line-height:1.35 !important;margin:26px 0 10px !important}.single-project-page .single-entry-content h3{font-size:19px !important;line-height:1.4 !important;margin:21px 0 8px !important}@media(min-width:768px){.single-project-page .single-entry-content,.single-project-page .single-entry-content p{font-size:17px !important;line-height:1.7 !important}.single-project-page .single-entry-content h2{font-size:clamp(23px,2.2vw,27px) !important}.single-project-page .single-entry-content h3{font-size:clamp(19px,1.8vw,22px) !important}}');
+
+    wp_enqueue_script('vld-main', VLD_URI . '/assets/js/main.min.js', array(), VLD_ASSET_VERSION, true);
+    wp_script_add_data('vld-main', 'strategy', 'defer');
+
+    wp_localize_script('vld-main', 'vldData', array(
+        'ajaxUrl' => admin_url('admin-ajax.php'),
+        'nonce'   => wp_create_nonce('vld_nonce'),
+    ));
+}
+add_action('wp_enqueue_scripts', 'vld_enqueue_assets');
+
+/**
+ * Font Awesome is decorative and does not define layout. Load it without
+ * blocking first paint; keep a noscript fallback for crawlers and no-JS users.
+ */
+function vld_async_icon_stylesheet($html, $handle, $href, $media) {
+    if ('vld-icons' !== $handle) {
+        return $html;
+    }
+
+    return sprintf(
+        '<link rel="stylesheet" id="%1$s-css" href="%2$s" media="print" onload="this.media=\'all\'"><noscript><link rel="stylesheet" href="%2$s"></noscript>' . "\n",
+        esc_attr($handle),
+        esc_url($href)
+    );
+}
+add_filter('style_loader_tag', 'vld_async_icon_stylesheet', 10, 4);
+
+/**
+ * Add connection hints only for third parties that are actually present.
+ * The theme intentionally does not connect to Google Fonts, FontAwesome CDN
+ * or Unsplash, so no unused preconnects are emitted for those origins.
+ */
+function vld_resource_hints($urls, $relation_type) {
+    $scripts = wp_scripts();
+    $origins = array();
+
+    foreach ((array) $scripts->queue as $handle) {
+        if (empty($scripts->registered[$handle]->src)) {
+            continue;
+        }
+
+        $src  = (string) $scripts->registered[$handle]->src;
+        $host = wp_parse_url($src, PHP_URL_HOST);
+        if ($host) {
+            $origins[$host] = 'https://' . $host;
+        }
+    }
+
+    if ('dns-prefetch' === $relation_type) {
+        foreach ($origins as $host => $origin) {
+            $urls[] = '//' . $host;
+        }
+    }
+
+    return array_values(array_unique($urls, SORT_REGULAR));
+}
+add_filter('wp_resource_hints', 'vld_resource_hints', 10, 2);
+
+// =====================================================
+// 2b. Agent discovery and accessibility
+// =====================================================
+
+/**
+ * Escape a title for use as Markdown link text in llms.txt.
+ */
+function vld_llms_markdown_text($text) {
+    $text = html_entity_decode(wp_strip_all_tags((string) $text), ENT_QUOTES, get_bloginfo('charset'));
+    $text = preg_replace('/\s+/u', ' ', trim($text));
+
+    return str_replace(array('\\', '[', ']'), array('\\\\', '\\[', '\\]'), $text);
+}
+
+/**
+ * Add published content links to the llms.txt response.
+ */
+function vld_llms_content_links($post_type, $limit) {
+    $links = array();
+    $query = new WP_Query(array(
+        'post_type'              => $post_type,
+        'post_status'            => 'publish',
+        'posts_per_page'         => absint($limit),
+        'orderby'                => 'modified',
+        'order'                  => 'DESC',
+        'no_found_rows'          => true,
+        'ignore_sticky_posts'    => true,
+        'fields'                 => 'ids',
+        'update_post_meta_cache' => false,
+        'update_post_term_cache' => false,
+    ));
+
+    foreach ($query->posts as $post_id) {
+        $title = vld_llms_markdown_text(get_the_title($post_id));
+        $url   = get_permalink($post_id);
+
+        if ($title && $url) {
+            $links[] = '- [' . $title . '](' . esc_url_raw($url) . ')';
+        }
+    }
+
+    return $links;
+}
+
+/**
+ * Build the llms.txt Markdown document and retain a database-cache fallback.
+ *
+ * The public endpoint normally uses a physical file generated at the
+ * WordPress root. The transient keeps the dynamic fallback inexpensive on
+ * hosts that do not allow themes to create that file.
+ */
+function vld_get_llms_document($force_refresh = false) {
+    $cache_key = 'vld_llms_document_v3';
+
+    if (!$force_refresh) {
+        $cached = get_transient($cache_key);
+        if (is_string($cached) && '' !== $cached) {
+            return $cached;
+        }
+    }
+
+    $site_name   = vld_llms_markdown_text(get_bloginfo('name'));
+    $description = vld_llms_markdown_text(get_bloginfo('description'));
+
+    if (!$site_name) {
+        $site_name = 'Văn Lực Land';
+    }
+
+    if (!$description) {
+        $description = 'Thông tin dự án bất động sản, pháp lý, bảng giá và kiến thức thị trường tại TP.HCM cùng các khu vực lân cận.';
+    }
+
+    $contact_page = get_page_by_path('lien-he');
+    $contact_url  = $contact_page ? get_permalink($contact_page) : home_url('/#lien-he');
+    $lines        = array(
+        '# ' . $site_name,
+        '',
+        '<!-- Generated by Văn Lực Land Developer; managed automatically. -->',
+        '<!-- VLD llms.txt version: ' . VLD_VERSION . ' -->',
+        '',
+        '> ' . $description,
+        '',
+        '## Nội dung chính',
+        '',
+        '- [Trang chủ](' . esc_url_raw(home_url('/')) . ')',
+        '- [Dự án đang phân phối](' . esc_url_raw(home_url('/du-an/')) . ')',
+        '- [Tin tức bất động sản](' . esc_url_raw(home_url('/#tin-tuc')) . ')',
+        '- [Liên hệ](' . esc_url_raw($contact_url) . ')',
+        '',
+    );
+
+    $projects = vld_llms_content_links('du_an', 20);
+    if ($projects) {
+        $lines[] = '## Dự án mới cập nhật';
+        $lines[] = '';
+        $lines   = array_merge($lines, $projects, array(''));
+    }
+
+    $posts = vld_llms_content_links('post', 15);
+    if ($posts) {
+        $lines[] = '## Bài viết mới';
+        $lines[] = '';
+        $lines   = array_merge($lines, $posts, array(''));
+    }
+
+    $lines[] = '## Liên hệ';
+    $lines[] = '';
+    $lines[] = '- Hotline: ' . vld_llms_markdown_text(vld_option('hotline', '0932.032.111'));
+    $lines[] = '- Email: ' . vld_llms_markdown_text(vld_option('email', 'vanlucland@gmail.com'));
+    $lines[] = '- Website: ' . esc_url_raw(home_url('/'));
+    $lines[] = '';
+
+    $document = implode("\n", $lines);
+    set_transient($cache_key, $document, 12 * HOUR_IN_SECONDS);
+
+    return $document;
+}
+
+/**
+ * Return the static llms.txt path when one installation owns the web root.
+ */
+function vld_llms_static_file_path() {
+    if (is_multisite()) {
+        return '';
+    }
+
+    return trailingslashit(ABSPATH) . 'llms.txt';
+}
+
+/**
+ * Write a native static llms.txt file for sub-second agent access.
+ *
+ * An existing user-managed file is never overwritten. Only files containing
+ * the theme marker are updated by later content or theme changes.
+ */
+function vld_write_static_llms_txt($force_refresh = false) {
+    $path   = vld_llms_static_file_path();
+    $marker = '<!-- Generated by Văn Lực Land Developer; managed automatically. -->';
+
+    if ('' === $path) {
+        return false;
+    }
+
+    clearstatcache(true, $path);
+
+    if (is_file($path)) {
+        $existing = file_get_contents($path); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+        if (!is_string($existing) || false === strpos($existing, $marker) || !is_writable($path)) {
+            return false;
+        }
+    } elseif (!is_writable(dirname($path))) {
+        return false;
+    }
+
+    $document = vld_get_llms_document($force_refresh);
+    $written  = file_put_contents($path, $document, LOCK_EX); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+
+    if (false === $written || strlen($document) !== $written) {
+        return false;
+    }
+
+    update_option('vld_llms_static_version', VLD_VERSION, false);
+    delete_option('vld_llms_needs_refresh');
+    delete_transient('vld_llms_static_write_failed');
+
+    return true;
+}
+
+/**
+ * Create or refresh the static file once after an update or content change.
+ */
+function vld_maybe_sync_static_llms_txt() {
+    $path          = vld_llms_static_file_path();
+    $needs_refresh = (bool) get_option('vld_llms_needs_refresh', false);
+    $same_version  = VLD_VERSION === get_option('vld_llms_static_version');
+
+    if ('' === $path || (!$needs_refresh && $same_version && is_file($path))) {
+        return;
+    }
+
+    if (get_transient('vld_llms_static_write_failed')) {
+        return;
+    }
+
+    if (!vld_write_static_llms_txt(true)) {
+        set_transient('vld_llms_static_write_failed', '1', 6 * HOUR_IN_SECONDS);
+    }
+}
+// Run after the Project post type is registered so project permalinks resolve.
+add_action('init', 'vld_maybe_sync_static_llms_txt', 100);
+
+/**
+ * Invalidate generated content. The shutdown refresh ensures that a physical
+ * file cannot remain stale merely because future /llms.txt requests bypass PHP.
+ */
+function vld_mark_llms_txt_stale($post_id = 0) {
+    if (is_numeric($post_id) && 0 < (int) $post_id) {
+        $post_id = (int) $post_id;
+        if (wp_is_post_revision($post_id) || wp_is_post_autosave($post_id)) {
+            return;
+        }
+    }
+
+    delete_transient('vld_llms_document_v3');
+    delete_transient('vld_llms_static_write_failed');
+    update_option('vld_llms_needs_refresh', '1', true);
+    $GLOBALS['vld_llms_needs_refresh_memory'] = true;
+}
+add_action('save_post_post', 'vld_mark_llms_txt_stale', 100, 1);
+add_action('save_post_du_an', 'vld_mark_llms_txt_stale', 100, 1);
+add_action('trashed_post', 'vld_mark_llms_txt_stale', 100, 1);
+add_action('untrashed_post', 'vld_mark_llms_txt_stale', 100, 1);
+add_action('deleted_post', 'vld_mark_llms_txt_stale', 100, 1);
+add_action('customize_save_after', 'vld_mark_llms_txt_stale', 100, 0);
+add_action('update_option_blogname', 'vld_mark_llms_txt_stale', 100, 0);
+add_action('update_option_blogdescription', 'vld_mark_llms_txt_stale', 100, 0);
+
+function vld_refresh_static_llms_txt_on_shutdown() {
+    if (!empty($GLOBALS['vld_llms_needs_refresh_memory']) && !get_transient('vld_llms_static_write_failed')) {
+        if (!vld_write_static_llms_txt(true)) {
+            set_transient('vld_llms_static_write_failed', '1', 6 * HOUR_IN_SECONDS);
+        }
+        $GLOBALS['vld_llms_needs_refresh_memory'] = false;
+    }
+}
+add_action('shutdown', 'vld_refresh_static_llms_txt_on_shutdown', 1);
+
+/**
+ * Serve a deterministic dynamic fallback when the static file cannot be made.
+ *
+ * Some WordPress/permalink combinations route /llms.txt to the front page.
+ * Handling the path before redirects and template rendering guarantees that
+ * AI agents get plain Markdown instead of a canonical or SEO redirect.
+ */
+function vld_maybe_serve_llms_txt() {
+    if (is_admin()) {
+        return;
+    }
+
+    $method = isset($_SERVER['REQUEST_METHOD']) ? strtoupper(sanitize_text_field(wp_unslash($_SERVER['REQUEST_METHOD']))) : 'GET';
+    if (!in_array($method, array('GET', 'HEAD'), true)) {
+        return;
+    }
+
+    $request_uri  = isset($_SERVER['REQUEST_URI']) ? wp_unslash($_SERVER['REQUEST_URI']) : '';
+    $request_path = rawurldecode((string) wp_parse_url($request_uri, PHP_URL_PATH));
+    $llms_path    = rawurldecode((string) wp_parse_url(home_url('/llms.txt'), PHP_URL_PATH));
+
+    if (untrailingslashit($request_path) !== untrailingslashit($llms_path)) {
+        return;
+    }
+
+    $document = vld_get_llms_document();
+    $etag     = '"' . hash('sha256', $document) . '"';
+
+    $if_none_match = isset($_SERVER['HTTP_IF_NONE_MATCH']) ? trim(sanitize_text_field(wp_unslash($_SERVER['HTTP_IF_NONE_MATCH']))) : '';
+    if ($if_none_match && hash_equals($etag, $if_none_match)) {
+        status_header(304);
+        header('ETag: ' . $etag);
+        header('Cache-Control: public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400');
+        exit;
+    }
+
+    status_header(200);
+    header('Content-Type: text/plain; charset=' . get_option('blog_charset'));
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400');
+    header('X-LiteSpeed-Cache-Control: public,max-age=86400');
+    header('ETag: ' . $etag);
+
+    if ('HEAD' !== $method) {
+        echo $document; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Plain-text Markdown assembled from escaped values.
+    }
+    exit;
+}
+// Run before Rank Math's redirection manager, which can exit before
+// template_redirect. Keep template_redirect as a compatibility fallback.
+add_action('parse_request', 'vld_maybe_serve_llms_txt', -1000, 0);
+add_action('template_redirect', 'vld_maybe_serve_llms_txt', -20);
+
+/**
+ * Site Kit was loading its Ninja Forms event provider on the homepage even
+ * though the homepage uses the theme's own form. Remove only that unused
+ * provider; do not blanket-defer WordPress/plugin scripts because inline
+ * dependencies can break when execution order changes.
+ */
+function vld_remove_unused_front_assets() {
+    if (!is_front_page() || is_user_logged_in()) {
+        return;
+    }
+
+    $scripts = wp_scripts();
+    foreach ((array) $scripts->queue as $handle) {
+        if (empty($scripts->registered[$handle]->src)) {
+            continue;
+        }
+
+        $src = (string) $scripts->registered[$handle]->src;
+        if (false !== strpos($src, 'googlesitekit-events-provider-ninja-forms')) {
+            wp_dequeue_script($handle);
+        }
+    }
+}
+add_action('wp_enqueue_scripts', 'vld_remove_unused_front_assets', 999);
+
+// Chỉ bỏ CSS block khi trang chủ đang dùng bố cục PHP cũ.
+// Khi bật Hybrid Gutenberg, thư viện block được giữ lại để các block lõi không vỡ.
+function vld_cleanup_bloat() {
+    if (!is_admin() && is_front_page() && !vld_front_page_uses_hybrid_blocks()) {
+        wp_dequeue_style('wp-block-library');
+        wp_dequeue_style('wp-block-library-theme');
+    }
+}
+add_action('wp_enqueue_scripts', 'vld_cleanup_bloat', 100);
+
+function vld_cleanup_head() {
+    remove_action('wp_head', 'print_emoji_detection_script', 7);
+    remove_action('wp_print_styles', 'print_emoji_styles');
+    remove_action('wp_head', 'rsd_link');
+    remove_action('wp_head', 'wlwmanifest_link');
+    remove_action('wp_head', 'wp_generator');
+}
+add_action('init', 'vld_cleanup_head');
+
+// =====================================================
+// 3. Register Sidebars & Widgets
+// =====================================================
+function vld_register_sidebars() {
+    register_sidebar(array(
+        'name'          => __('Sidebar BDS', 'vanlucland-developer'),
+        'id'            => 'sidebar-bds',
+        'description'   => __('Sidebar hiển thị bên phải khu vực dự án', 'vanlucland-developer'),
+        'before_widget' => '<div class="sidebar-widget">',
+        'after_widget'  => '</div>',
+        'before_title'  => '<h3 class="widget-title"><span>',
+        'after_title'   => '</span></h3>',
+    ));
+}
+add_action('widgets_init', 'vld_register_sidebars');
+
+// =====================================================
+// 4. WordPress Customizer — Theme Options (Giao diện → Tùy biến)
+// =====================================================
+/**
+ * Return published projects and posts that can be selected as a Hero CTA.
+ * Post IDs are shared across post types, so a single integer setting is both
+ * compact and resilient when titles or permalinks change later.
+ */
+function vld_hero_target_choices() {
+    $choices = array(
+        0 => __('— Chọn bài viết hoặc dự án —', 'vanlucland-developer'),
+    );
+
+    $content_types = array(
+        'du_an' => __('Dự án', 'vanlucland-developer'),
+        'post'  => __('Bài viết', 'vanlucland-developer'),
+    );
+
+    foreach ($content_types as $post_type => $group_label) {
+        $items = get_posts(array(
+            'post_type'              => $post_type,
+            'post_status'            => 'publish',
+            'posts_per_page'         => -1,
+            'orderby'                => 'title',
+            'order'                  => 'ASC',
+            'no_found_rows'          => true,
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+        ));
+
+        foreach ($items as $item) {
+            $title = get_the_title($item);
+            if ('' === trim((string) $title)) {
+                $title = sprintf(__('Nội dung #%d', 'vanlucland-developer'), $item->ID);
+            }
+            $choices[$item->ID] = $group_label . ' — ' . $title;
+        }
+    }
+
+    return $choices;
+}
+
+/**
+ * Store only IDs belonging to a project or a normal post.
+ */
+function vld_sanitize_hero_target($value) {
+    $post_id = absint($value);
+    if (!$post_id) {
+        return 0;
+    }
+
+    return in_array(get_post_type($post_id), array('du_an', 'post'), true) ? $post_id : 0;
+}
+
+/**
+ * Keep the autoplay delay within a calm, readable 3–12 second range.
+ */
+function vld_sanitize_hero_delay($value) {
+    return min(12, max(3, absint($value)));
+}
+
+/**
+ * Resolve the selected content at render time so permalink changes are
+ * reflected automatically. Deleted or unpublished targets fall back safely.
+ */
+function vld_hero_target_url($post_id) {
+    $post_id = vld_sanitize_hero_target($post_id);
+    if ($post_id && 'publish' === get_post_status($post_id)) {
+        $permalink = get_permalink($post_id);
+        if ($permalink) {
+            return $permalink;
+        }
+    }
+
+    return '#du-an';
+}
+
+function vld_customize_register($wp_customize) {
+    if (!class_exists('VLD_Customize_Sortable_Control')) {
+        /**
+         * Small drag-and-drop control for reordering the four footer blocks.
+         * It stores a comma-separated list and falls back safely if a value is
+         * missing after a theme update.
+         */
+        class VLD_Customize_Sortable_Control extends WP_Customize_Control {
+            public $type = 'vld_sortable';
+
+            public function render_content() {
+                $current = array_filter(array_map('sanitize_key', explode(',', (string) $this->value())));
+                ?>
+                <label>
+                    <?php if ($this->label) : ?>
+                        <span class="customize-control-title"><?php echo esc_html($this->label); ?></span>
+                    <?php endif; ?>
+                    <?php if ($this->description) : ?>
+                        <span class="description customize-control-description"><?php echo esc_html($this->description); ?></span>
+                    <?php endif; ?>
+                    <input class="vld-sortable-value" type="hidden" value="<?php echo esc_attr(implode(',', $current)); ?>" <?php $this->link(); ?>>
+                </label>
+                <ul class="vld-sortable-list">
+                    <?php foreach ($current as $item) : ?>
+                        <?php if (isset($this->choices[$item])) : ?>
+                            <li class="vld-sortable-item" data-value="<?php echo esc_attr($item); ?>">
+                                <span class="dashicons dashicons-move vld-sortable-handle" aria-hidden="true"></span>
+                                <span><?php echo esc_html($this->choices[$item]); ?></span>
+                            </li>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
+                </ul>
+                <?php
+            }
+        }
+    }
+
+    // -------------------------------------------------
+    // SECTION 1: Thông tin thương hiệu & Logo
+    // -------------------------------------------------
+    $wp_customize->add_section('vld_brand_section', array(
+        'title'    => __('1. Tên thương hiệu & Logo', 'vanlucland-developer'),
+        'priority' => 20,
+    ));
+
+    $wp_customize->add_setting('vld_brand_name', array('default' => 'VĂN LỰC LAND', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_brand_name', array('label' => __('Tên thương hiệu chính', 'vanlucland-developer'), 'section' => 'vld_brand_section', 'type' => 'text'));
+
+    $wp_customize->add_setting('vld_brand_sub', array('default' => 'BẤT ĐỘNG SẢN CAO CẤP', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_brand_sub', array('label' => __('Tên phụ (Slogan dưới tên)', 'vanlucland-developer'), 'section' => 'vld_brand_section', 'type' => 'text'));
+
+    // -------------------------------------------------
+    // SECTION 2: Thông tin liên hệ & Mạng xã hội
+    // -------------------------------------------------
+    $wp_customize->add_section('vld_contact_info', array(
+        'title'    => __('2. Thông tin liên hệ & Mạng xã hội', 'vanlucland-developer'),
+        'priority' => 25,
+    ));
+    
+    $wp_customize->add_setting('vld_hotline', array('default' => '0932.032.111', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_hotline', array('label' => __('Số Hotline chính', 'vanlucland-developer'), 'section' => 'vld_contact_info', 'type' => 'text'));
+    
+    $wp_customize->add_setting('vld_email', array('default' => 'vanlucland@gmail.com', 'sanitize_callback' => 'sanitize_email'));
+    $wp_customize->add_control('vld_email', array('label' => __('Email công ty', 'vanlucland-developer'), 'section' => 'vld_contact_info', 'type' => 'email'));
+    
+    $wp_customize->add_setting('vld_address', array('default' => '68 Nguyễn Huệ, Q.1, TP.HCM', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_address', array('label' => __('Địa chỉ trụ sở', 'vanlucland-developer'), 'section' => 'vld_contact_info', 'type' => 'text'));
+    
+    $wp_customize->add_setting('vld_zalo', array('default' => 'https://zalo.me/0932032111',
+            'https://en.wikialpha.org/wiki/V%C4%83n_L%E1%BB%B1c_Land', 'sanitize_callback' => 'esc_url_raw'));
+    $wp_customize->add_control('vld_zalo', array('label' => __('Link Zalo (Nút nổi góc trái)', 'vanlucland-developer'), 'section' => 'vld_contact_info', 'type' => 'url'));
+    
+    $wp_customize->add_setting('vld_messenger', array('default' => 'https://m.me/vanlucland', 'sanitize_callback' => 'esc_url_raw'));
+    $wp_customize->add_control('vld_messenger', array('label' => __('Link Facebook Messenger', 'vanlucland-developer'), 'section' => 'vld_contact_info', 'type' => 'url'));
+    
+    $wp_customize->add_setting('vld_facebook', array('default' => 'https://facebook.com', 'sanitize_callback' => 'esc_url_raw'));
+    $wp_customize->add_control('vld_facebook', array('label' => __('Link trang Facebook Fanpage', 'vanlucland-developer'), 'section' => 'vld_contact_info', 'type' => 'url'));
+    
+    $wp_customize->add_setting('vld_youtube', array('default' => 'https://youtube.com', 'sanitize_callback' => 'esc_url_raw'));
+    $wp_customize->add_control('vld_youtube', array('label' => __('Link kênh Youtube', 'vanlucland-developer'), 'section' => 'vld_contact_info', 'type' => 'url'));
+    
+    $wp_customize->add_setting('vld_map_embed', array('default' => 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3919.44!2d106.70!3d10.77', 'sanitize_callback' => 'esc_url_raw'));
+    $wp_customize->add_control('vld_map_embed', array('label' => __('Google Maps Embed URL (Bản đồ Footer)', 'vanlucland-developer'), 'section' => 'vld_contact_info', 'type' => 'url'));
+
+    // -------------------------------------------------
+    // SECTION 2B: SEO trang chủ & Local Business
+    // -------------------------------------------------
+    $wp_customize->add_section('vld_seo_section', array(
+        'title'       => __('2B. SEO kỹ thuật & Schema', 'vanlucland-developer'),
+        'description' => __('Các giá trị này đồng bộ với Rank Math/Yoast khi plugin đang bật và làm dữ liệu dự phòng khi không có plugin SEO.', 'vanlucland-developer'),
+        'priority'    => 27,
+    ));
+
+    $wp_customize->add_setting('vld_seo_title', array(
+        'default'           => 'Văn Lực Land – Dự án bất động sản TP.HCM',
+        'sanitize_callback' => 'sanitize_text_field',
+    ));
+    $wp_customize->add_control('vld_seo_title', array(
+        'label'       => __('SEO Title trang chủ (khuyên dùng dưới 60 ký tự)', 'vanlucland-developer'),
+        'section'     => 'vld_seo_section',
+        'type'        => 'text',
+        'input_attrs' => array('maxlength' => 60),
+    ));
+
+    $wp_customize->add_setting('vld_seo_description', array(
+        'default'           => 'Văn Lực Land cập nhật dự án căn hộ, đất nền, nhà phố tại TP.HCM và vùng lân cận; thông tin pháp lý, bảng giá, ưu đãi mới minh bạch. Hotline 0932.032.111.',
+        'sanitize_callback' => 'sanitize_textarea_field',
+    ));
+    $wp_customize->add_control('vld_seo_description', array(
+        'label'       => __('Meta description trang chủ (khuyên dùng 150–160 ký tự)', 'vanlucland-developer'),
+        'section'     => 'vld_seo_section',
+        'type'        => 'textarea',
+        'input_attrs' => array('maxlength' => 160),
+    ));
+
+    $wp_customize->add_setting('vld_seo_social_image', array(
+        'default'           => VLD_URI . '/assets/images/hero-banner.jpg',
+        'sanitize_callback' => 'esc_url_raw',
+    ));
+    $wp_customize->add_control('vld_seo_social_image', array(
+        'label'       => __('Ảnh chia sẻ OG/Twitter (khuyên dùng 1200×630)', 'vanlucland-developer'),
+        'section'     => 'vld_seo_section',
+        'type'        => 'url',
+    ));
+
+    $wp_customize->add_setting('vld_geo_latitude', array(
+        'default'           => '10.7743',
+        'sanitize_callback' => 'sanitize_text_field',
+    ));
+    $wp_customize->add_control('vld_geo_latitude', array(
+        'label'   => __('Vĩ độ trụ sở (Latitude)', 'vanlucland-developer'),
+        'section' => 'vld_seo_section',
+        'type'    => 'text',
+    ));
+
+    $wp_customize->add_setting('vld_geo_longitude', array(
+        'default'           => '106.7031',
+        'sanitize_callback' => 'sanitize_text_field',
+    ));
+    $wp_customize->add_control('vld_geo_longitude', array(
+        'label'   => __('Kinh độ trụ sở (Longitude)', 'vanlucland-developer'),
+        'section' => 'vld_seo_section',
+        'type'    => 'text',
+    ));
+
+    $wp_customize->add_setting('vld_opening_hours', array(
+        'default'           => 'Mo-Su 00:00-23:59',
+        'sanitize_callback' => 'sanitize_text_field',
+    ));
+    $wp_customize->add_control('vld_opening_hours', array(
+        'label'       => __('Giờ tư vấn theo Schema.org', 'vanlucland-developer'),
+        'description' => __('Mặc định theo nội dung “Hotline tư vấn 24/7” đang công khai trên website.', 'vanlucland-developer'),
+        'section'     => 'vld_seo_section',
+        'type'        => 'text',
+    ));
+
+    // -------------------------------------------------
+    // SECTION 3: Hero Slider Trang chủ
+    // -------------------------------------------------
+    $wp_customize->add_section('vld_slider_section', array(
+        'title'    => __('3. Quản lý Slider Trang chủ', 'vanlucland-developer'),
+        'description' => __('Mỗi slide có thể mở một Dự án hoặc Bài viết riêng. Slider tự chạy và tạm dừng khi khách rê chuột, dùng bàn phím hoặc bật chế độ giảm chuyển động.', 'vanlucland-developer'),
+        'priority' => 30,
+    ));
+
+    $wp_customize->add_setting('vld_hero_autoplay', array(
+        'default'           => 'yes',
+        'sanitize_callback' => 'vld_sanitize_select',
+    ));
+    $wp_customize->add_control('vld_hero_autoplay', array(
+        'label'   => __('Tự động chuyển slide', 'vanlucland-developer'),
+        'section' => 'vld_slider_section',
+        'type'    => 'select',
+        'choices' => array(
+            'yes' => __('Bật — khuyên dùng', 'vanlucland-developer'),
+            'no'  => __('Tắt', 'vanlucland-developer'),
+        ),
+    ));
+
+    $wp_customize->add_setting('vld_hero_autoplay_delay', array(
+        'default'           => 5,
+        'sanitize_callback' => 'vld_sanitize_hero_delay',
+    ));
+    $wp_customize->add_control('vld_hero_autoplay_delay', array(
+        'label'       => __('Thời gian hiển thị mỗi slide (giây)', 'vanlucland-developer'),
+        'description' => __('Khuyên dùng 5–7 giây để khách kịp đọc nội dung.', 'vanlucland-developer'),
+        'section'     => 'vld_slider_section',
+        'type'        => 'range',
+        'input_attrs' => array('min' => 3, 'max' => 12, 'step' => 1),
+    ));
+
+    $hero_target_choices = vld_hero_target_choices();
+
+    // Slide 1
+    $wp_customize->add_setting('vld_slide1_img', array('default' => VLD_URI . '/assets/images/hero-banner.jpg', 'sanitize_callback' => 'esc_url_raw'));
+    $wp_customize->add_control('vld_slide1_img', array('label' => __('Slide 1 — URL Ảnh nền', 'vanlucland-developer'), 'section' => 'vld_slider_section', 'type' => 'url'));
+
+    $wp_customize->add_setting('vld_slide1_title', array('default' => 'THE GRAND MARINA SAIGON', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_slide1_title', array('label' => __('Slide 1 — Tiêu đề lớn', 'vanlucland-developer'), 'section' => 'vld_slider_section', 'type' => 'text'));
+
+    $wp_customize->add_setting('vld_slide1_desc', array('default' => 'Căn hộ hàng hiệu Marriott lớn nhất thế giới tại Trung tâm Quận 1', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_slide1_desc', array('label' => __('Slide 1 — Mô tả ngắn', 'vanlucland-developer'), 'section' => 'vld_slider_section', 'type' => 'text'));
+
+    $wp_customize->add_setting('vld_slide1_target', array('default' => 0, 'sanitize_callback' => 'vld_sanitize_hero_target'));
+    $wp_customize->add_control('vld_slide1_target', array(
+        'label'       => __('Slide 1 — Nút “Xem chi tiết” mở', 'vanlucland-developer'),
+        'description' => __('Chọn đúng bài Dự án hoặc Bài viết muốn khách truy cập.', 'vanlucland-developer'),
+        'section'     => 'vld_slider_section',
+        'type'        => 'select',
+        'choices'     => $hero_target_choices,
+    ));
+
+    // Slide 2
+    $wp_customize->add_setting('vld_slide2_img', array('default' => VLD_URI . '/assets/images/hero-banner-2.jpg', 'sanitize_callback' => 'esc_url_raw'));
+    $wp_customize->add_control('vld_slide2_img', array('label' => __('Slide 2 — URL Ảnh nền', 'vanlucland-developer'), 'section' => 'vld_slider_section', 'type' => 'url'));
+
+    $wp_customize->add_setting('vld_slide2_title', array('default' => 'VINHOMES GRAND PARK Q.9', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_slide2_title', array('label' => __('Slide 2 — Tiêu đề lớn', 'vanlucland-developer'), 'section' => 'vld_slider_section', 'type' => 'text'));
+
+    $wp_customize->add_setting('vld_slide2_desc', array('default' => 'Đại đô thị thông minh chuẩn quốc tế hàng đầu TP. Thủ Đức', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_slide2_desc', array('label' => __('Slide 2 — Mô tả ngắn', 'vanlucland-developer'), 'section' => 'vld_slider_section', 'type' => 'text'));
+
+    $wp_customize->add_setting('vld_slide2_target', array('default' => 0, 'sanitize_callback' => 'vld_sanitize_hero_target'));
+    $wp_customize->add_control('vld_slide2_target', array(
+        'label'       => __('Slide 2 — Nút “Xem chi tiết” mở', 'vanlucland-developer'),
+        'description' => __('Chọn đúng bài Dự án hoặc Bài viết muốn khách truy cập.', 'vanlucland-developer'),
+        'section'     => 'vld_slider_section',
+        'type'        => 'select',
+        'choices'     => $hero_target_choices,
+    ));
+
+    // -------------------------------------------------
+    // SECTION 4: Thông tin Chuyên viên tư vấn
+    // -------------------------------------------------
+    
+    // Slide 3
+    $wp_customize->add_setting('vld_slide3_img', array('default' => 'https://vanlucland.com/wp-content/uploads/2026/03/phoi-canh-hiep-phuoc-premia2.webp', 'sanitize_callback' => 'esc_url_raw'));
+    $wp_customize->add_control('vld_slide3_img', array('label' => __('Slide 3 — URL Ảnh nền', 'vanlucland-developer'), 'section' => 'vld_slider_section', 'type' => 'url'));
+
+    $wp_customize->add_setting('vld_slide3_title', array('default' => 'ĐẤT NỀN HIỆP PHƯỚC PREMIA NHÀ BÈ', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_slide3_title', array('label' => __('Slide 3 — Tiêu đề lớn', 'vanlucland-developer'), 'section' => 'vld_slider_section', 'type' => 'text'));
+
+    $wp_customize->add_setting('vld_slide3_desc', array('default' => 'Đất nền sổ đỏ từng nền quy hoạch 1/500 hoàn chỉnh ven sông Soài Rạp chỉ từ 1,7 tỷ', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_slide3_desc', array('label' => __('Slide 3 — Mô tả ngắn', 'vanlucland-developer'), 'section' => 'vld_slider_section', 'type' => 'text'));
+
+    $wp_customize->add_setting('vld_slide3_target', array('default' => 2099, 'sanitize_callback' => 'vld_sanitize_hero_target'));
+    $wp_customize->add_control('vld_slide3_target', array(
+        'label'       => __('Slide 3 — Nút “Xem chi tiết” mở', 'vanlucland-developer'),
+        'description' => __('Chọn đúng bài Dự án hoặc Bài viết muốn khách truy cập.', 'vanlucland-developer'),
+        'section'     => 'vld_slider_section',
+        'type'        => 'select',
+        'choices'     => $hero_target_choices,
+    ));
+
+    $wp_customize->add_section('vld_advisor_section', array(
+        'title'    => __('4. Thông tin Chuyên viên tư vấn', 'vanlucland-developer'),
+        'priority' => 35,
+    ));
+
+    $wp_customize->add_setting('vld_advisor_name', array('default' => 'Trần Văn Lực', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_advisor_name', array('label' => __('Họ và tên chuyên viên', 'vanlucland-developer'), 'section' => 'vld_advisor_section', 'type' => 'text'));
+
+    $wp_customize->add_setting('vld_advisor_role', array('default' => 'Trưởng phòng Kinh doanh', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_advisor_role', array('label' => __('Chức danh', 'vanlucland-developer'), 'section' => 'vld_advisor_section', 'type' => 'text'));
+
+    $wp_customize->add_setting('vld_advisor_avatar', array('default' => VLD_URI . '/assets/images/default-project.jpg', 'sanitize_callback' => 'esc_url_raw'));
+    $wp_customize->add_control('vld_advisor_avatar', array('label' => __('URL Ảnh chân dung chuyên viên', 'vanlucland-developer'), 'section' => 'vld_advisor_section', 'type' => 'url'));
+
+    $wp_customize->add_setting('vld_advisor_desc', array('default' => 'Đội ngũ chuyên viên tư vấn của Văn Lực Land đều là những người dày dạn kinh nghiệm, có am hiểu sâu sắc trong lĩnh vực bất động sản và luôn tận tâm tư vấn.', 'sanitize_callback' => 'sanitize_textarea_field'));
+    $wp_customize->add_control('vld_advisor_desc', array('label' => __('Lời giới thiệu', 'vanlucland-developer'), 'section' => 'vld_advisor_section', 'type' => 'textarea'));
+
+    $wp_customize->add_setting('vld_stat_projects', array('default' => '1500', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_stat_projects', array('label' => __('Số dự án đã phân phối', 'vanlucland-developer'), 'section' => 'vld_advisor_section', 'type' => 'text'));
+
+    $wp_customize->add_setting('vld_stat_customers', array('default' => '5000', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_stat_customers', array('label' => __('Số khách hàng đã tư vấn', 'vanlucland-developer'), 'section' => 'vld_advisor_section', 'type' => 'text'));
+
+    $wp_customize->add_setting('vld_stat_years', array('default' => '15', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_stat_years', array('label' => __('Số năm kinh nghiệm', 'vanlucland-developer'), 'section' => 'vld_advisor_section', 'type' => 'text'));
+
+    // -------------------------------------------------
+    // SECTION 5: Cấu hình Popup Lightbox Tự động
+    // -------------------------------------------------
+    $wp_customize->add_section('vld_popup_section', array(
+        'title'    => __('5. Cấu hình Popup Đăng ký (Lightbox)', 'vanlucland-developer'),
+        'priority' => 40,
+    ));
+
+    $wp_customize->add_setting('vld_popup_enable', array('default' => 'no', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_popup_enable', array(
+        'label'    => __('Bật/Tắt Popup đăng ký ưu đãi', 'vanlucland-developer'),
+        'section'  => 'vld_popup_section',
+        'type'     => 'select',
+        'choices'  => array('yes' => 'Bật Popup', 'no' => 'Tắt Popup'),
+    ));
+
+    $wp_customize->add_setting('vld_popup_title', array('default' => 'NHẬN BẢNG GIÁ DỰ ÁN MỚI NHẤT', 'sanitize_callback' => 'sanitize_text_field'));
+    $wp_customize->add_control('vld_popup_title', array('label' => __('Tiêu đề Popup', 'vanlucland-developer'), 'section' => 'vld_popup_section', 'type' => 'text'));
+
+    $wp_customize->add_setting('vld_popup_desc', array('default' => 'Đăng ký ngay để nhận thông tin ưu đãi chiết khấu 8% và bảng giá gốc từ Chủ Đầu Tư.', 'sanitize_callback' => 'sanitize_textarea_field'));
+    $wp_customize->add_control('vld_popup_desc', array('label' => __('Mô tả Popup', 'vanlucland-developer'), 'section' => 'vld_popup_section', 'type' => 'textarea'));
+
+    // -------------------------------------------------
+    // SECTION 6: Thiết kế khu vực Liên hệ & Footer
+    // -------------------------------------------------
+    $wp_customize->add_section('vld_footer_design_section', array(
+        'title'       => __('6. Thiết kế Liên hệ & Footer', 'vanlucland-developer'),
+        'description' => __('Bản 1.5.7 có chế độ Siêu gọn: form xếp 4 trường thành một hàng trên máy tính, 2×2 trên điện thoại; lời nhắn thu gọn; footer mobile gập các nhóm phụ. Các thanh trượt phía dưới vẫn dùng để tinh chỉnh thêm.', 'vanlucland-developer'),
+        'priority'    => 45,
+    ));
+
+    $wp_customize->add_setting('vld_contact_density', array(
+        'default'           => 'ultra',
+        'sanitize_callback' => 'vld_sanitize_select',
+    ));
+    $wp_customize->add_control('vld_contact_density', array(
+        'label'       => __('Mật độ khối đăng ký', 'vanlucland-developer'),
+        'description' => __('Siêu gọn là lựa chọn mặc định mới và tự giới hạn các khoảng đệm cũ đang lưu ở mức lớn.', 'vanlucland-developer'),
+        'section'     => 'vld_footer_design_section',
+        'type'        => 'select',
+        'choices'     => array(
+            'ultra'    => __('Siêu gọn — khuyên dùng', 'vanlucland-developer'),
+            'compact'  => __('Gọn', 'vanlucland-developer'),
+            'standard' => __('Tiêu chuẩn', 'vanlucland-developer'),
+        ),
+    ));
+
+    $wp_customize->add_setting('vld_contact_message_mode', array(
+        'default'           => 'collapsed',
+        'sanitize_callback' => 'vld_sanitize_select',
+    ));
+    $wp_customize->add_control('vld_contact_message_mode', array(
+        'label'   => __('Cách hiển thị ô Lời nhắn', 'vanlucland-developer'),
+        'section' => 'vld_footer_design_section',
+        'type'    => 'select',
+        'choices' => array(
+            'collapsed' => __('Thu gọn — bấm mới mở', 'vanlucland-developer'),
+            'open'      => __('Luôn mở', 'vanlucland-developer'),
+            'hidden'    => __('Ẩn hoàn toàn', 'vanlucland-developer'),
+        ),
+    ));
+
+    $wp_customize->add_setting('vld_contact_mobile_description', array(
+        'default'           => 'no',
+        'sanitize_callback' => 'vld_sanitize_select',
+    ));
+    $wp_customize->add_control('vld_contact_mobile_description', array(
+        'label'   => __('Hiện mô tả liên hệ trên điện thoại', 'vanlucland-developer'),
+        'section' => 'vld_footer_design_section',
+        'type'    => 'select',
+        'choices' => array(
+            'no'  => __('Ẩn — gọn hơn', 'vanlucland-developer'),
+            'yes' => __('Hiện', 'vanlucland-developer'),
+        ),
+    ));
+
+    $wp_customize->add_setting('vld_footer_density', array(
+        'default'           => 'ultra',
+        'sanitize_callback' => 'vld_sanitize_select',
+    ));
+    $wp_customize->add_control('vld_footer_density', array(
+        'label'   => __('Mật độ footer', 'vanlucland-developer'),
+        'section' => 'vld_footer_design_section',
+        'type'    => 'select',
+        'choices' => array(
+            'ultra'    => __('Siêu gọn — khuyên dùng', 'vanlucland-developer'),
+            'compact'  => __('Gọn', 'vanlucland-developer'),
+            'standard' => __('Tiêu chuẩn', 'vanlucland-developer'),
+        ),
+    ));
+
+    $wp_customize->add_setting('vld_footer_mobile_mode', array(
+        'default'           => 'accordion',
+        'sanitize_callback' => 'vld_sanitize_select',
+    ));
+    $wp_customize->add_control('vld_footer_mobile_mode', array(
+        'label'       => __('Bố cục footer trên điện thoại', 'vanlucland-developer'),
+        'description' => __('Dạng gập chỉ mở phần người xem bấm vào, giúp footer thấp hơn nhiều.', 'vanlucland-developer'),
+        'section'     => 'vld_footer_design_section',
+        'type'        => 'select',
+        'choices'     => array(
+            'accordion' => __('Dạng gập — khuyên dùng', 'vanlucland-developer'),
+            'essential' => __('Chỉ thông tin liên hệ', 'vanlucland-developer'),
+            'full'      => __('Mở toàn bộ', 'vanlucland-developer'),
+        ),
+    ));
+
+    $wp_customize->add_setting('vld_contact_layout_order', array(
+        'default'           => 'info-form',
+        'sanitize_callback' => 'vld_sanitize_select',
+    ));
+    $wp_customize->add_control('vld_contact_layout_order', array(
+        'label'   => __('Thứ tự khối đăng ký trên máy tính', 'vanlucland-developer'),
+        'section' => 'vld_footer_design_section',
+        'type'    => 'select',
+        'choices' => array(
+            'info-form' => __('Thông tin trái — Form phải', 'vanlucland-developer'),
+            'form-info' => __('Form trái — Thông tin phải', 'vanlucland-developer'),
+        ),
+    ));
+
+    $wp_customize->add_setting('vld_contact_show_checklist', array(
+        'default'           => 'no',
+        'sanitize_callback' => 'vld_sanitize_select',
+    ));
+    $wp_customize->add_control('vld_contact_show_checklist', array(
+        'label'   => __('Hiện danh sách 4 lợi ích', 'vanlucland-developer'),
+        'section' => 'vld_footer_design_section',
+        'type'    => 'select',
+        'choices' => array('no' => __('Ẩn — gọn hơn', 'vanlucland-developer'), 'yes' => __('Hiện', 'vanlucland-developer')),
+    ));
+
+    $range_controls = array(
+        'vld_contact_padding' => array(
+            'label'   => __('Chiều cao khối đăng ký (đệm trên/dưới)', 'vanlucland-developer'),
+            'default' => 18,
+            'min'     => 0,
+            'max'     => 80,
+            'step'    => 1,
+        ),
+        'vld_contact_gap' => array(
+            'label'   => __('Khoảng cách giữa thông tin và form', 'vanlucland-developer'),
+            'default' => 18,
+            'min'     => 4,
+            'max'     => 60,
+            'step'    => 1,
+        ),
+        'vld_contact_info_width' => array(
+            'label'       => __('Độ rộng cột thông tin (%)', 'vanlucland-developer'),
+            'description' => __('Phần còn lại tự động dành cho form.', 'vanlucland-developer'),
+            'default'     => 38,
+            'min'         => 25,
+            'max'         => 55,
+            'step'        => 1,
+        ),
+        'vld_contact_heading_size' => array(
+            'label'   => __('Cỡ tiêu đề đăng ký (px)', 'vanlucland-developer'),
+            'default' => 22,
+            'min'     => 16,
+            'max'     => 38,
+            'step'    => 1,
+        ),
+        'vld_contact_form_padding' => array(
+            'label'   => __('Khoảng đệm bên trong form (px)', 'vanlucland-developer'),
+            'default' => 14,
+            'min'     => 4,
+            'max'     => 40,
+            'step'    => 1,
+        ),
+        'vld_contact_form_radius' => array(
+            'label'   => __('Độ bo góc form (px)', 'vanlucland-developer'),
+            'default' => 12,
+            'min'     => 0,
+            'max'     => 30,
+            'step'    => 1,
+        ),
+        'vld_footer_padding' => array(
+            'label'       => __('Đệm trên/dưới footer chính (px)', 'vanlucland-developer'),
+            'description' => __('Có thể kéo về 0. Đây chỉ là phần đệm ngoài; các thanh bên dưới điều khiển phần nội dung còn lại.', 'vanlucland-developer'),
+            'default' => 10,
+            'min'     => 0,
+            'max'     => 80,
+            'step'    => 1,
+        ),
+        'vld_footer_gap' => array(
+            'label'   => __('Khoảng cách giữa các cột footer', 'vanlucland-developer'),
+            'default' => 18,
+            'min'     => 4,
+            'max'     => 60,
+            'step'    => 1,
+        ),
+        'vld_footer_title_size' => array(
+            'label'   => __('Cỡ tiêu đề cột footer (px)', 'vanlucland-developer'),
+            'default' => 16,
+            'min'     => 12,
+            'max'     => 28,
+            'step'    => 1,
+        ),
+        'vld_footer_text_size' => array(
+            'label'   => __('Cỡ chữ nội dung footer (px)', 'vanlucland-developer'),
+            'default' => 13,
+            'min'     => 12,
+            'max'     => 18,
+            'step'    => 1,
+        ),
+        'vld_footer_title_spacing' => array(
+            'label'   => __('Khoảng dưới tiêu đề cột (px)', 'vanlucland-developer'),
+            'default' => 8,
+            'min'     => 0,
+            'max'     => 24,
+            'step'    => 1,
+        ),
+        'vld_footer_item_spacing' => array(
+            'label'   => __('Khoảng cách các dòng/nội dung (px)', 'vanlucland-developer'),
+            'default' => 6,
+            'min'     => 0,
+            'max'     => 18,
+            'step'    => 1,
+        ),
+        'vld_footer_map_height' => array(
+            'label'   => __('Chiều cao bản đồ (px)', 'vanlucland-developer'),
+            'default' => 105,
+            'min'     => 44,
+            'max'     => 280,
+            'step'    => 5,
+        ),
+        'vld_footer_project_count' => array(
+            'label'       => __('Số dự án hiển thị trong footer', 'vanlucland-developer'),
+            'description' => __('Ít dự án hơn sẽ làm footer thấp hơn rõ rệt.', 'vanlucland-developer'),
+            'default'     => 4,
+            'min'         => 1,
+            'max'         => 6,
+            'step'        => 1,
+        ),
+        'vld_footer_bottom_padding' => array(
+            'label'   => __('Đệm thanh bản quyền trên/dưới (px)', 'vanlucland-developer'),
+            'default' => 8,
+            'min'     => 0,
+            'max'     => 24,
+            'step'    => 1,
+        ),
+        'vld_footer_border_height' => array(
+            'label'   => __('Độ dày đường vàng phía trên (px)', 'vanlucland-developer'),
+            'default' => 2,
+            'min'     => 0,
+            'max'     => 8,
+            'step'    => 1,
+        ),
+    );
+
+    foreach ($range_controls as $setting_id => $control_args) {
+        $wp_customize->add_setting($setting_id, array(
+            'default'           => $control_args['default'],
+            'sanitize_callback' => 'vld_sanitize_range',
+        ));
+        $wp_customize->add_control($setting_id, array(
+            'label'       => $control_args['label'],
+            'description' => isset($control_args['description']) ? $control_args['description'] : '',
+            'section'     => 'vld_footer_design_section',
+            'type'        => 'range',
+            'input_attrs' => array(
+                'min'  => $control_args['min'],
+                'max'  => $control_args['max'],
+                'step' => $control_args['step'],
+            ),
+        ));
+    }
+
+    $color_controls = array(
+        'vld_contact_color_start' => array(__('Màu nền đăng ký — đầu gradient', 'vanlucland-developer'), '#091D3B'),
+        'vld_contact_color_end'   => array(__('Màu nền đăng ký — cuối gradient', 'vanlucland-developer'), '#163E73'),
+        'vld_contact_form_color'  => array(__('Màu nền form', 'vanlucland-developer'), '#FFFFFF'),
+        'vld_region_accent_color' => array(__('Màu nhấn chung (vàng)', 'vanlucland-developer'), '#8F6B0B'),
+        'vld_button_color_start'  => array(__('Màu nút gửi — đầu gradient', 'vanlucland-developer'), '#A77B08'),
+        'vld_button_color_end'    => array(__('Màu nút gửi — cuối gradient', 'vanlucland-developer'), '#765505'),
+        'vld_footer_color'        => array(__('Màu nền footer chính', 'vanlucland-developer'), '#0F2C59'),
+        'vld_footer_dark_color'   => array(__('Màu thanh bản quyền', 'vanlucland-developer'), '#091D3B'),
+        'vld_footer_text_color'   => array(__('Màu chữ footer', 'vanlucland-developer'), '#FFFFFF'),
+    );
+
+    foreach ($color_controls as $setting_id => $color_args) {
+        $wp_customize->add_setting($setting_id, array(
+            'default'           => $color_args[1],
+            'sanitize_callback' => 'sanitize_hex_color',
+        ));
+        $wp_customize->add_control(new WP_Customize_Color_Control($wp_customize, $setting_id, array(
+            'label'   => $color_args[0],
+            'section' => 'vld_footer_design_section',
+        )));
+    }
+
+    $wp_customize->add_setting('vld_footer_order', array(
+        'default'           => 'brand,projects,links,map',
+        'sanitize_callback' => 'vld_sanitize_footer_order',
+    ));
+    $wp_customize->add_control(new VLD_Customize_Sortable_Control($wp_customize, 'vld_footer_order', array(
+        'label'       => __('Kéo thả thứ tự 4 cột footer', 'vanlucland-developer'),
+        'description' => __('Giữ biểu tượng mũi tên rồi kéo lên hoặc xuống.', 'vanlucland-developer'),
+        'section'     => 'vld_footer_design_section',
+        'choices'     => array(
+            'brand'    => __('Thương hiệu & liên hệ', 'vanlucland-developer'),
+            'projects' => __('Dự án nổi bật', 'vanlucland-developer'),
+            'links'    => __('Liên kết nhanh', 'vanlucland-developer'),
+            'map'      => __('Bản đồ & nhận tin', 'vanlucland-developer'),
+        ),
+    )));
+
+    $visibility_controls = array(
+        'vld_footer_show_social' => array(__('Hiện biểu tượng Facebook/YouTube', 'vanlucland-developer'), 'yes'),
+        'vld_footer_show_tagline' => array(__('Hiện câu giới thiệu thương hiệu', 'vanlucland-developer'), 'no'),
+        'vld_footer_show_projects' => array(__('Hiện nhóm Dự án nổi bật', 'vanlucland-developer'), 'yes'),
+        'vld_footer_show_links' => array(__('Hiện nhóm Liên kết nhanh', 'vanlucland-developer'), 'yes'),
+        'vld_footer_show_map_block' => array(__('Hiện nhóm Bản đồ & nhận tin', 'vanlucland-developer'), 'yes'),
+        'vld_footer_show_map' => array(__('Hiện bản đồ', 'vanlucland-developer'), 'yes'),
+        'vld_footer_show_newsletter' => array(__('Hiện ô đăng ký nhận tin', 'vanlucland-developer'), 'yes'),
+    );
+
+    foreach ($visibility_controls as $setting_id => $control_args) {
+        $wp_customize->add_setting($setting_id, array(
+            'default'           => $control_args[1],
+            'sanitize_callback' => 'vld_sanitize_select',
+        ));
+        $wp_customize->add_control($setting_id, array(
+            'label'   => $control_args[0],
+            'section' => 'vld_footer_design_section',
+            'type'    => 'select',
+            'choices' => array('yes' => __('Hiện', 'vanlucland-developer'), 'no' => __('Ẩn', 'vanlucland-developer')),
+        ));
+    }
+}
+add_action('customize_register', 'vld_customize_register');
+
+function vld_sanitize_select($input, $setting) {
+    $input   = sanitize_key($input);
+    $control = $setting->manager->get_control($setting->id);
+    $choices = $control ? (array) $control->choices : array();
+
+    return array_key_exists($input, $choices) ? $input : $setting->default;
+}
+
+function vld_sanitize_range($input, $setting) {
+    $input   = absint($input);
+    $control = $setting->manager->get_control($setting->id);
+    $attrs   = $control ? (array) $control->input_attrs : array();
+    $min     = isset($attrs['min']) ? absint($attrs['min']) : 0;
+    $max     = isset($attrs['max']) ? absint($attrs['max']) : 9999;
+
+    return min($max, max($min, $input));
+}
+
+function vld_sanitize_footer_order($input) {
+    $allowed = array('brand', 'projects', 'links', 'map');
+    $items   = array_values(array_unique(array_filter(array_map('sanitize_key', explode(',', (string) $input)))));
+    $items   = array_values(array_intersect($items, $allowed));
+
+    foreach ($allowed as $item) {
+        if (!in_array($item, $items, true)) {
+            $items[] = $item;
+        }
+    }
+
+    return implode(',', $items);
+}
+
+function vld_customize_controls_assets() {
+    wp_enqueue_script(
+        'vld-customizer-controls',
+        VLD_URI . '/assets/js/customizer-controls.min.js',
+        array('jquery', 'jquery-ui-sortable', 'customize-controls'),
+        VLD_VERSION,
+        true
+    );
+
+    wp_add_inline_style(
+        'customize-controls',
+        '.customize-control input[type=range]{width:calc(100% - 58px);vertical-align:middle}.vld-range-value{display:inline-grid;min-width:38px;min-height:32px;margin-left:8px;padding:0 6px;color:#1d2327;background:#fff;border:1px solid #8c8f94;border-radius:4px;font-weight:600;place-items:center;vertical-align:middle}.vld-sortable-list{margin:10px 0 0}.vld-sortable-item{display:flex;align-items:center;gap:7px;min-height:52px;margin:0 0 7px;padding:4px 12px 4px 4px;background:#fff;border:1px solid #c3c4c7;border-radius:4px;box-shadow:0 1px 1px rgba(0,0,0,.04)}.vld-sortable-handle{display:grid;min-width:44px;min-height:44px;color:#50575e;cursor:grab;place-items:center;touch-action:none}.vld-sortable-item.ui-sortable-helper{box-shadow:0 5px 14px rgba(0,0,0,.16)}'
+    );
+}
+add_action('customize_controls_enqueue_scripts', 'vld_customize_controls_assets');
+
+// 5. Helper function to get theme options (Auto fallback when empty)
+function vld_option($key, $default = '') {
+    $val = get_theme_mod('vld_' . $key, $default);
+    return (!empty($val) && trim($val) !== '') ? $val : $default;
+}
+
+function vld_clamped_theme_mod($key, $default, $min, $max) {
+    $value = absint(get_theme_mod($key, $default));
+    return min($max, max($min, $value));
+}
+
+function vld_color_luminance($hex) {
+    $hex = ltrim((string) $hex, '#');
+    if (3 === strlen($hex)) {
+        $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+    }
+
+    $channels = array(
+        hexdec(substr($hex, 0, 2)) / 255,
+        hexdec(substr($hex, 2, 2)) / 255,
+        hexdec(substr($hex, 4, 2)) / 255,
+    );
+
+    foreach ($channels as &$channel) {
+        $channel = ($channel <= 0.03928)
+            ? $channel / 12.92
+            : pow(($channel + 0.055) / 1.055, 2.4);
+    }
+    unset($channel);
+
+    return (0.2126 * $channels[0]) + (0.7152 * $channels[1]) + (0.0722 * $channels[2]);
+}
+
+function vld_color_contrast($foreground, $background) {
+    $lighter = max(vld_color_luminance($foreground), vld_color_luminance($background));
+    $darker  = min(vld_color_luminance($foreground), vld_color_luminance($background));
+
+    return ($lighter + 0.05) / ($darker + 0.05);
+}
+
+function vld_accessible_text_color($preferred, $backgrounds) {
+    $backgrounds = (array) $backgrounds;
+    $candidates  = array($preferred, '#FFFFFF', '#000000');
+    $best        = '#FFFFFF';
+    $best_score  = 0;
+
+    foreach (array_unique($candidates) as $candidate) {
+        $score = PHP_FLOAT_MAX;
+        foreach ($backgrounds as $background) {
+            $score = min($score, vld_color_contrast($candidate, $background));
+        }
+
+        if ($score >= 4.5) {
+            return $candidate;
+        }
+
+        if ($score > $best_score) {
+            $best       = $candidate;
+            $best_score = $score;
+        }
+    }
+
+    return $best;
+}
+
+function vld_footer_order() {
+    return explode(',', vld_sanitize_footer_order(get_theme_mod('vld_footer_order', 'brand,projects,links,map')));
+}
+
+/**
+ * Convert Customizer choices into scoped CSS. Numeric settings are clamped
+ * again here so legacy database values cannot break the public layout.
+ */
+function vld_enqueue_design_customizations() {
+    $contact_padding = vld_clamped_theme_mod('vld_contact_padding', 18, 0, 80);
+    $contact_gap     = vld_clamped_theme_mod('vld_contact_gap', 18, 4, 60);
+    $info_width      = vld_clamped_theme_mod('vld_contact_info_width', 38, 25, 55);
+    $form_width      = 100 - $info_width;
+    $heading_size    = vld_clamped_theme_mod('vld_contact_heading_size', 22, 16, 38);
+    $form_padding    = vld_clamped_theme_mod('vld_contact_form_padding', 14, 4, 40);
+    $form_radius     = vld_clamped_theme_mod('vld_contact_form_radius', 12, 0, 30);
+    $footer_padding  = vld_clamped_theme_mod('vld_footer_padding', 10, 0, 80);
+    $footer_gap      = vld_clamped_theme_mod('vld_footer_gap', 18, 4, 60);
+    $footer_title    = vld_clamped_theme_mod('vld_footer_title_size', 16, 12, 28);
+    $footer_text_size = vld_clamped_theme_mod('vld_footer_text_size', 13, 12, 18);
+    $title_spacing   = vld_clamped_theme_mod('vld_footer_title_spacing', 8, 0, 24);
+    $item_spacing    = vld_clamped_theme_mod('vld_footer_item_spacing', 6, 0, 18);
+    $map_height      = vld_clamped_theme_mod('vld_footer_map_height', 105, 44, 280);
+    $bottom_padding  = vld_clamped_theme_mod('vld_footer_bottom_padding', 8, 0, 24);
+    $border_height   = vld_clamped_theme_mod('vld_footer_border_height', 2, 0, 8);
+    $contact_density = get_theme_mod('vld_contact_density', 'ultra');
+    $footer_density  = get_theme_mod('vld_footer_density', 'ultra');
+
+    if ('ultra' === $contact_density) {
+        $contact_padding = min($contact_padding, 6);
+        $contact_gap     = min($contact_gap, 8);
+        $heading_size    = min($heading_size, 20);
+        $form_padding    = min($form_padding, 8);
+    } elseif ('compact' === $contact_density) {
+        $contact_padding = min($contact_padding, 12);
+        $contact_gap     = min($contact_gap, 14);
+        $form_padding    = min($form_padding, 12);
+    }
+
+    if ('ultra' === $footer_density) {
+        $footer_padding = min($footer_padding, 4);
+        $footer_gap     = min($footer_gap, 10);
+        $footer_title   = min($footer_title, 14);
+        $title_spacing  = min($title_spacing, 4);
+        $item_spacing   = min($item_spacing, 4);
+        $map_height     = min($map_height, 72);
+        $bottom_padding = min($bottom_padding, 4);
+    } elseif ('compact' === $footer_density) {
+        $footer_padding = min($footer_padding, 8);
+        $footer_gap     = min($footer_gap, 14);
+        $title_spacing  = min($title_spacing, 6);
+        $item_spacing   = min($item_spacing, 5);
+        $map_height     = min($map_height, 90);
+        $bottom_padding = min($bottom_padding, 6);
+    }
+
+    $mobile_contact     = $contact_padding;
+    $mobile_form_padding = $form_padding;
+    $mobile_footer      = $footer_padding;
+
+    $colors = array(
+        'contact_start' => sanitize_hex_color(get_theme_mod('vld_contact_color_start', '#091D3B')) ?: '#091D3B',
+        'contact_end'   => sanitize_hex_color(get_theme_mod('vld_contact_color_end', '#163E73')) ?: '#163E73',
+        'form'          => sanitize_hex_color(get_theme_mod('vld_contact_form_color', '#FFFFFF')) ?: '#FFFFFF',
+        'accent'        => sanitize_hex_color(get_theme_mod('vld_region_accent_color', '#8F6B0B')) ?: '#8F6B0B',
+        'button_start'  => sanitize_hex_color(get_theme_mod('vld_button_color_start', '#A77B08')) ?: '#A77B08',
+        'button_end'    => sanitize_hex_color(get_theme_mod('vld_button_color_end', '#765505')) ?: '#765505',
+        'footer'        => sanitize_hex_color(get_theme_mod('vld_footer_color', '#0F2C59')) ?: '#0F2C59',
+        'footer_dark'   => sanitize_hex_color(get_theme_mod('vld_footer_dark_color', '#091D3B')) ?: '#091D3B',
+        'footer_text'   => sanitize_hex_color(get_theme_mod('vld_footer_text_color', '#FFFFFF')) ?: '#FFFFFF',
+    );
+    $contact_text = vld_accessible_text_color('#FFFFFF', array($colors['contact_start'], $colors['footer'], $colors['contact_end']));
+    $form_text    = vld_accessible_text_color('#0F2C59', $colors['form']);
+    $button_text  = vld_accessible_text_color('#FFFFFF', array($colors['button_start'], $colors['button_end']));
+    $footer_text_color = vld_accessible_text_color($colors['footer_text'], $colors['footer']);
+    $bottom_text       = vld_accessible_text_color('#FFFFFF', $colors['footer_dark']);
+
+    $css  = ':root{--vld-region-accent:' . $colors['accent'] . ';--vld-footer-text:' . $footer_text_color . ';--vld-contact-text:' . $contact_text . ';--vld-form-text:' . $form_text . ';--vld-button-text:' . $button_text . ';}';
+    $css .= '.section-contact{padding:' . $contact_padding . 'px 0;background:linear-gradient(135deg,' . $colors['contact_start'] . ' 0%,' . $colors['footer'] . ' 60%,' . $colors['contact_end'] . ' 100%);}';
+    $css .= '.contact-grid{grid-template-columns:minmax(0,' . $info_width . 'fr) minmax(0,' . $form_width . 'fr);gap:' . $contact_gap . 'px;}';
+    $css .= '.contact-info,.contact-info h2{color:var(--vld-contact-text);}.contact-info h2{font-size:' . $heading_size . 'px;}';
+    $css .= '.contact-form-wrap{padding:' . $form_padding . 'px;border-radius:' . $form_radius . 'px;background-color:' . $colors['form'] . ';}';
+    $css .= '.contact-form-wrap h3,.section-contact .contact-form-wrap label{color:var(--vld-form-text);}';
+    $css .= '.hotline-box i,.hotline-box div strong{color:var(--vld-region-accent);}';
+    $css .= '.btn-submit,.newsletter-form button{color:var(--vld-button-text);background:linear-gradient(135deg,' . $colors['button_start'] . ',' . $colors['button_end'] . ');}';
+    $css .= '.footer-border-top{height:' . $border_height . 'px;background-color:var(--vld-region-accent);}';
+    $css .= '.footer-main{padding:' . $footer_padding . 'px 0;background-color:' . $colors['footer'] . ';color:var(--vld-footer-text);}';
+    $css .= '.footer-grid{gap:' . $footer_gap . 'px;align-items:start;}';
+    $css .= '.footer-col h4{margin-bottom:' . $title_spacing . 'px;padding-bottom:' . max(2, (int) floor($title_spacing / 2)) . 'px;font-size:' . $footer_title . 'px;color:var(--vld-footer-text);border-color:var(--vld-region-accent);}';
+    $css .= '.footer-logo{margin-bottom:' . $item_spacing . 'px}.footer-col p{margin-bottom:' . $item_spacing . 'px;line-height:1.45}.footer-links,.footer-info{gap:' . $item_spacing . 'px}.footer-info{display:grid}.footer-info li{line-height:1.45}.footer-social{margin-top:' . $item_spacing . 'px}.footer-contact li{margin-bottom:' . $item_spacing . 'px}.newsletter-form{margin-top:' . $item_spacing . 'px}';
+    $css .= '.footer-col p,.footer-links li a,.footer-contact li,.footer-info,.footer-info a,.footer-social a{font-size:' . $footer_text_size . 'px;color:var(--vld-footer-text);}';
+    $css .= '.footer-contact li i,.footer-links li a:hover{color:var(--vld-region-accent);}';
+    $css .= '.footer-social a:hover{background-color:var(--vld-region-accent);}';
+    $css .= '.footer-map{height:' . $map_height . 'px;margin-bottom:' . $item_spacing . 'px;}';
+    $css .= '.footer-bottom{padding:' . $bottom_padding . 'px 0;line-height:1.4;color:' . $bottom_text . ';background-color:' . $colors['footer_dark'] . ';}';
+
+    if ('form-info' === get_theme_mod('vld_contact_layout_order', 'info-form')) {
+        $css .= '.contact-info{order:2}.contact-form-wrap{order:1}';
+    }
+
+    if ('yes' === get_theme_mod('vld_contact_show_checklist', 'no')) {
+        $css .= '.section-contact .checklist{display:block;}';
+    }
+
+    $css .= '@media(max-width:767px){.section-contact{padding:' . $mobile_contact . 'px 0}.contact-grid{grid-template-columns:minmax(0,1fr);gap:' . min(30, $contact_gap) . 'px}.contact-info,.contact-form-wrap{order:initial}.contact-form-wrap{padding:' . $mobile_form_padding . 'px}.footer-main{padding:' . $mobile_footer . 'px 0}.footer-grid{gap:' . min(24, $footer_gap) . 'px}}';
+
+    wp_add_inline_style('vld-style', $css);
+}
+add_action('wp_enqueue_scripts', 'vld_enqueue_design_customizations', 30);
+
+function vld_front_page_seo_title() {
+    return vld_option('seo_title', 'Văn Lực Land – Dự án bất động sản TP.HCM');
+}
+
+function vld_front_page_seo_description() {
+    return vld_option(
+        'seo_description',
+        'Văn Lực Land cập nhật dự án căn hộ, đất nền, nhà phố tại TP.HCM và vùng lân cận; thông tin pháp lý, bảng giá, ưu đãi mới minh bạch. Hotline 0932.032.111.'
+    );
+}
+
+function vld_social_image_url() {
+    if (is_singular() && has_post_thumbnail()) {
+        return get_the_post_thumbnail_url(get_queried_object_id(), 'full');
+    }
+
+    return vld_option('seo_social_image', vld_option('slide1_img', VLD_URI . '/assets/images/hero-banner.jpg'));
+}
+
+function vld_normalize_phone($phone) {
+    $digits = preg_replace('/\D+/', '', (string) $phone);
+    if (0 === strpos($digits, '0')) {
+        $digits = '84' . substr($digits, 1);
+    }
+
+    return '+' . ltrim($digits, '+');
+}
+
+/**
+ * Keep the homepage title/description consistent across WordPress and the
+ * supported SEO plugins, while leaving all post/project metadata editable.
+ */
+function vld_filter_front_page_title($title) {
+    return is_front_page() ? vld_front_page_seo_title() : $title;
+}
+add_filter('pre_get_document_title', 'vld_filter_front_page_title', 20);
+add_filter('rank_math/frontend/title', 'vld_filter_front_page_title', 20);
+add_filter('wpseo_title', 'vld_filter_front_page_title', 20);
+add_filter('aioseo_title', 'vld_filter_front_page_title', 20);
+
+/**
+ * Remove the legacy site-tagline boilerplate from blog category titles.
+ * Keep any genuinely customized category title untouched.
+ */
+function vld_filter_category_title_boilerplate($title) {
+    if (!is_category()) {
+        return $title;
+    }
+
+    $decoded_title = html_entity_decode(wp_strip_all_tags((string) $title), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $has_legacy_boilerplate = false !== stripos($decoded_title, 'Sàn Bất Động Sản TP.HCM')
+        && false !== stripos($decoded_title, 'Mua Bán Cho Thuê Nhà Đất');
+
+    if (!$has_legacy_boilerplate) {
+        return $title;
+    }
+
+    $category_name = single_cat_title('', false);
+    return $category_name ? $category_name . ' | Văn Lực Land' : $title;
+}
+add_filter('pre_get_document_title', 'vld_filter_category_title_boilerplate', 100);
+add_filter('rank_math/frontend/title', 'vld_filter_category_title_boilerplate', 100);
+
+function vld_filter_front_page_description($description) {
+    return is_front_page() ? vld_front_page_seo_description() : $description;
+}
+add_filter('rank_math/frontend/description', 'vld_filter_front_page_description', 20);
+add_filter('wpseo_metadesc', 'vld_filter_front_page_description', 20);
+add_filter('aioseo_description', 'vld_filter_front_page_description', 20);
+
+function vld_filter_social_image($image) {
+    if (!empty($image)) {
+        return $image;
+    }
+
+    return vld_social_image_url();
+}
+add_filter('rank_math/opengraph/facebook/image', 'vld_filter_social_image', 20);
+add_filter('rank_math/opengraph/twitter/image', 'vld_filter_social_image', 20);
+add_filter('wpseo_opengraph_image', 'vld_filter_social_image', 20);
+add_filter('wpseo_twitter_image', 'vld_filter_social_image', 20);
+
+/**
+ * Keep social previews complete when an individual page has not been given
+ * custom OpenGraph copy. Existing Rank Math values always take precedence.
+ */
+function vld_filter_social_title($title) {
+    return !empty($title) ? $title : wp_get_document_title();
+}
+add_filter('rank_math/opengraph/facebook/title', 'vld_filter_social_title', 20);
+add_filter('rank_math/opengraph/twitter/title', 'vld_filter_social_title', 20);
+
+function vld_filter_social_description($description) {
+    if (!empty($description)) {
+        return $description;
+    }
+
+    if (is_front_page()) {
+        return vld_front_page_seo_description();
+    }
+
+    if (is_singular()) {
+        $excerpt = wp_strip_all_tags(get_the_excerpt(get_queried_object_id()));
+        if ($excerpt) {
+            return $excerpt;
+        }
+    }
+
+    return (string) get_bloginfo('description');
+}
+add_filter('rank_math/opengraph/facebook/description', 'vld_filter_social_description', 20);
+add_filter('rank_math/opengraph/twitter/description', 'vld_filter_social_description', 20);
+
+function vld_filter_social_image_alt($alt) {
+    return !empty($alt) ? $alt : wp_get_document_title();
+}
+add_filter('rank_math/opengraph/facebook/image_alt', 'vld_filter_social_image_alt', 20);
+add_filter('rank_math/opengraph/twitter/image_alt', 'vld_filter_social_image_alt', 20);
+
+/**
+ * Preserve WordPress/plugin noindex decisions on search/error/private pages;
+ * extend only pages that are already intended for indexing.
+ */
+function vld_robots_directives($robots) {
+    if (!is_admin() && !is_search() && !is_404() && !isset($robots['noindex'])) {
+        $robots['index']               = true;
+        $robots['follow']              = true;
+        $robots['max-image-preview']   = 'large';
+        $robots['max-snippet']         = '-1';
+        $robots['max-video-preview']   = '-1';
+    }
+
+    return $robots;
+}
+add_filter('wp_robots', 'vld_robots_directives', 20);
+
+/**
+ * Fill missing attachment alt text without overwriting editorial alt text.
+ */
+function vld_attachment_image_attributes($attr, $attachment) {
+    if (empty($attr['alt'])) {
+        $alt = get_post_meta($attachment->ID, '_wp_attachment_image_alt', true);
+        if (!$alt) {
+            $alt = get_the_title($attachment->ID);
+        }
+        $attr['alt'] = wp_strip_all_tags($alt);
+    }
+
+    $attr['decoding'] = 'async';
+    return $attr;
+}
+add_filter('wp_get_attachment_image_attributes', 'vld_attachment_image_attributes', 20, 2);
+
+/**
+ * Build a human-readable ALT fallback for legacy images pasted as raw HTML.
+ * This changes only the rendered markup; it never overwrites Media Library
+ * metadata or an ALT value that an editor has already supplied.
+ */
+function vld_content_image_alt_fallback($attachment_id, $image_html) {
+    $alt = '';
+
+    if ($attachment_id) {
+        $alt = trim((string) get_post_meta($attachment_id, '_wp_attachment_image_alt', true));
+        if (!$alt) {
+            $alt = trim((string) get_the_title($attachment_id));
+        }
+    }
+
+    if (!$alt && preg_match('/\\bsrc\\s*=\\s*(["\\\'])(.*?)\\1/i', $image_html, $source)) {
+        $path = (string) wp_parse_url(html_entity_decode($source[2], ENT_QUOTES, 'UTF-8'), PHP_URL_PATH);
+        $name = pathinfo(wp_basename($path), PATHINFO_FILENAME);
+        $name = preg_replace('/(?:[-_](?:scaled|e\\d{8,}|\\d{2,4}x\\d{2,4}|copy|final|new|[0-9]+))+$/i', '', $name);
+        $name = trim(preg_replace('/[-_]+/', ' ', $name));
+
+        if ($name && !preg_match('/^(?:img|image|photo|picture|banner|logo|vip|untitled)$/i', $name)) {
+            $alt = $name;
+        }
+    }
+
+    if (!$alt) {
+        $context_title = is_singular() ? get_the_title(get_queried_object_id()) : '';
+        $alt = $context_title
+            ? sprintf(__('Hình ảnh minh họa %s', 'vanlucland-developer'), $context_title)
+            : sprintf(__('Hình ảnh %s', 'vanlucland-developer'), vld_option('brand_name', 'Văn Lực Land'));
+    }
+
+    return trim(wp_strip_all_tags($alt));
+}
+
+function vld_content_image_alt_attribute($filtered_image, $context, $attachment_id) {
+    if (class_exists('WP_HTML_Tag_Processor')) {
+        $processor = new WP_HTML_Tag_Processor($filtered_image);
+        if ($processor->next_tag('IMG')) {
+            $existing_alt = $processor->get_attribute('alt');
+            if (null !== $existing_alt && '' !== trim((string) $existing_alt)) {
+                return $filtered_image;
+            }
+
+            $processor->set_attribute('alt', vld_content_image_alt_fallback($attachment_id, $filtered_image));
+            return $processor->get_updated_html();
+        }
+    }
+
+    if (preg_match('/\\balt\\s*=\\s*(["\\\'])\\s*[^"\\\']+\\1/i', $filtered_image)) {
+        return $filtered_image;
+    }
+
+    $alt = esc_attr(vld_content_image_alt_fallback($attachment_id, $filtered_image));
+    if (preg_match('/\\balt\\s*=\\s*(["\\\'])\\s*\\1/i', $filtered_image)) {
+        return preg_replace('/\\balt\\s*=\\s*(["\\\'])\\s*\\1/i', 'alt="' . $alt . '"', $filtered_image, 1);
+    }
+
+    return preg_replace('/<img\\b/i', '<img alt="' . $alt . '"', $filtered_image, 1);
+}
+add_filter('wp_content_img_tag', 'vld_content_image_alt_attribute', 20, 3);
+
+/**
+ * WordPress will generate WebP sub-sizes for future JPEG uploads when the
+ * server image editor supports WebP. Existing images need thumbnail rebuild.
+ */
+function vld_prefer_webp_subsizes($formats) {
+    if (function_exists('wp_image_editor_supports') && wp_image_editor_supports(array('mime_type' => 'image/webp'))) {
+        $formats['image/jpeg'] = 'image/webp';
+    }
+    return $formats;
+}
+add_filter('image_editor_output_format', 'vld_prefer_webp_subsizes');
+
+function vld_image_editor_quality($quality, $mime_type) {
+    if (in_array($mime_type, array('image/jpeg', 'image/webp', 'image/avif'), true)) {
+        return 82;
+    }
+    return $quality;
+}
+add_filter('wp_editor_set_quality', 'vld_image_editor_quality', 20, 2);
+
+/**
+ * Icon-only menu items still need an accessible name.
+ */
+function vld_menu_link_accessibility($atts, $item, $args) {
+    $visible_title = trim(wp_strip_all_tags((string) $item->title));
+    if ('' === $visible_title && untrailingslashit((string) $item->url) === untrailingslashit(home_url('/'))) {
+        $atts['aria-label'] = __('Trang chủ', 'vanlucland-developer');
+
+        $classes   = isset($atts['class']) ? preg_split('/\s+/', trim((string) $atts['class'])) : array();
+        $classes[] = 'vld-home-link';
+        $atts['class'] = implode(' ', array_unique(array_filter($classes)));
+    }
+
+    return $atts;
+}
+add_filter('nav_menu_link_attributes', 'vld_menu_link_accessibility', 20, 3);
+
+/**
+ * Replace legacy Font Awesome markup used by the icon-only Home menu item
+ * with an inline SVG. The icon no longer depends on a webfont loading before
+ * the navigation is painted, so LiteSpeed/CDN CSS deferral cannot turn it
+ * into a missing-glyph square.
+ */
+function vld_menu_home_svg_icon($item_output, $item, $depth, $args) {
+    $visible_title = trim(wp_strip_all_tags((string) $item->title));
+    $is_home_link  = untrailingslashit((string) $item->url) === untrailingslashit(home_url('/'));
+
+    if (0 !== (int) $depth || !$is_home_link || '' !== $visible_title) {
+        return $item_output;
+    }
+
+    $icon = '<svg class="vld-home-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10.75 12 3l9 7.75"></path><path d="M5 9.5V21h14V9.5"></path><path d="M9 21v-6h6v6"></path></svg>';
+    $updated_output = preg_replace('/(<a\b[^>]*>).*?(<\/a>)/is', '$1' . $icon . '$2', $item_output, 1);
+
+    return is_string($updated_output) ? $updated_output : $item_output;
+}
+add_filter('walker_nav_menu_start_el', 'vld_menu_home_svg_icon', 20, 4);
+
+/**
+ * Render attachment URLs with WordPress srcset/sizes; keep remote/theme URLs as a safe fallback.
+ */
+function vld_theme_webp_sources($url) {
+    $url       = strtok((string) $url, '?');
+    $theme_uri = untrailingslashit(VLD_URI);
+
+    if (!$url || 0 !== strpos($url, $theme_uri . '/')) {
+        return array();
+    }
+
+    $relative_path = ltrim(substr($url, strlen($theme_uri)), '/');
+    $source_path   = trailingslashit(VLD_DIR) . $relative_path;
+    $extension     = strtolower((string) pathinfo($source_path, PATHINFO_EXTENSION));
+
+    if (!in_array($extension, array('jpg', 'jpeg', 'png'), true) || !file_exists($source_path)) {
+        return array();
+    }
+
+    $path_without_extension = substr($source_path, 0, -(strlen($extension) + 1));
+    $url_without_extension  = substr($url, 0, -(strlen($extension) + 1));
+    $candidates             = array();
+
+    foreach (array(96, 192, 320, 480, 768) as $width) {
+        $candidate_path = $path_without_extension . '-' . $width . '.webp';
+        if (file_exists($candidate_path)) {
+            $candidates[] = array(
+                'url'   => $url_without_extension . '-' . $width . '.webp',
+                'width' => $width,
+            );
+        }
+    }
+
+    $full_path = $path_without_extension . '.webp';
+    if (file_exists($full_path)) {
+        $source_size = wp_getimagesize($source_path);
+        $full_width  = !empty($source_size[0]) ? (int) $source_size[0] : 0;
+        if ($full_width) {
+            $candidates[] = array(
+                'url'   => $url_without_extension . '.webp',
+                'width' => $full_width,
+            );
+        }
+    }
+
+    if (!$candidates) {
+        return array();
+    }
+
+    $deduplicated = array();
+    foreach ($candidates as $candidate) {
+        $deduplicated[$candidate['width']] = $candidate;
+    }
+    ksort($deduplicated, SORT_NUMERIC);
+    $candidates = array_values($deduplicated);
+    $largest    = end($candidates);
+
+    return array(
+        'src'    => $largest['url'],
+        'srcset' => implode(
+            ', ',
+            array_map(
+                static function ($candidate) {
+                    return $candidate['url'] . ' ' . $candidate['width'] . 'w';
+                },
+                $candidates
+            )
+        ),
+    );
+}
+
+function vld_image_html($url, $alt, $attributes = array(), $size = 'full') {
+    $attachment_id = attachment_url_to_postid($url);
+
+    if ($attachment_id) {
+        return wp_get_attachment_image(
+            $attachment_id,
+            $size,
+            false,
+            array_merge(
+                array(
+                    'alt'      => $alt,
+                    'decoding' => 'async',
+                ),
+                $attributes
+            )
+        );
+    }
+
+    // Auto generate responsive srcset for custom uploads
+    $srcset = "";
+    if (strpos($url, '/uploads/') !== false && substr($url, -5) === '.webp') {
+        $base = substr($url, 0, -5);
+        $url_480 = $base . '-480x300.webp';
+        $url_768 = $base . '-768x480.webp';
+        $path_480 = str_replace(site_url('/'), ABSPATH, $url_480);
+        if (file_exists($path_480)) {
+            $url_300 = $base . '-300x169.webp';
+        $path_300 = str_replace(site_url('/'), ABSPATH, $url_300);
+        if (!file_exists($path_300)) {
+            $url_300 = $base . '-300x168.webp';
+            $path_300 = str_replace(site_url('/'), ABSPATH, $url_300);
+        }
+        if (!file_exists($path_300)) {
+            $url_300 = $base . '-300x200.webp';
+            $path_300 = str_replace(site_url('/'), ABSPATH, $url_300);
+        }
+        if (file_exists($path_300)) {
+            $srcset = "{$url_300} 300w, {$url_480} 480w, {$url_768} 768w, {$url} 1200w";
+        } else {
+            $srcset = "{$url_480} 480w, {$url_768} 768w, {$url} 1200w";
+        }
+        }
+    }
+
+    $attributes = array_merge(
+        array(
+            'src'      => $url,
+            'alt'      => $alt,
+            'decoding' => 'async',
+        ),
+        $attributes
+    );
+    if ($srcset && empty($attributes['srcset'])) {
+        $attributes['srcset'] = $srcset;
+        if (empty($attributes['sizes'])) {
+            $attributes['sizes'] = '(max-width: 600px) 480px, (max-width: 991px) 768px, 1200px';
+        }
+    }
+
+    $allowed_attributes = array('src', 'srcset', 'sizes', 'alt', 'class', 'width', 'height', 'loading', 'decoding', 'fetchpriority', 'style', 'data-no-lazy', 'data-litespeed-no-lazy');
+    $html = '<img';
+    foreach ($attributes as $name => $value) {
+        if (in_array($name, $allowed_attributes, true) && '' !== $value && null !== $value) {
+            $html .= sprintf(' %s="%s"', esc_attr($name), esc_attr($value));
+        }
+    }
+    $html .= ' />';
+    return $html;
+}
+
+ 
+function vld_preload_front_page_hero() {
+    if (!is_front_page()) {
+        return;
+    }
+
+    // Không preload ảnh Hero nếu người quản trị đã bỏ block Hero khỏi bố cục kéo-thả.
+    if (vld_front_page_uses_hybrid_blocks() && !has_block('vld/hero', get_queried_object_id())) {
+        return;
+    }
+
+    $hero_url      = vld_option('slide1_img', VLD_URI . '/assets/images/hero-banner.jpg');
+    $attachment_id = attachment_url_to_postid($hero_url);
+    $srcset = $attachment_id ? wp_get_attachment_image_srcset($attachment_id, 'large') : '';
+    $webp         = $attachment_id ? array() : vld_theme_webp_sources($hero_url);
+
+    if ($webp) {
+        echo '<link rel="preload" as="image" type="image/webp" href="' . esc_url($webp['src']) . '" fetchpriority="high" imagesrcset="' . esc_attr($webp['srcset']) . '" imagesizes="(max-width: 575px) 480px, (max-width: 991px) 768px, 1200px">' . "\n";
+        return;
+    }
+
+    echo '<link rel="preload" as="image" href="' . esc_url($hero_url) . '" fetchpriority="high"';
+    if ($srcset) {
+        echo ' imagesrcset="' . esc_attr($srcset) . '" imagesizes="(max-width: 575px) 480px, (max-width: 991px) 768px, 1200px"';
+    }
+    echo '>' . "\n";
+}
+// add_action('wp_head', 'vld_preload_front_page_hero', 2);
+
+// 6. AJAX handler for contact form
+function vld_handle_contact_form() {
+    check_ajax_referer('vld_nonce', 'nonce');
+
+    $honeypot = sanitize_text_field(wp_unslash($_POST['website'] ?? ''));
+    if ('' !== $honeypot) {
+        wp_send_json_error(array('message' => 'Yêu cầu không hợp lệ.'), 400);
+    }
+
+    $source  = sanitize_key(wp_unslash($_POST['source'] ?? 'contact'));
+    $name    = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
+    $phone   = sanitize_text_field(wp_unslash($_POST['phone'] ?? ''));
+    $email   = sanitize_email(wp_unslash($_POST['email'] ?? ''));
+    $project = sanitize_text_field(wp_unslash($_POST['project'] ?? ''));
+    $message = sanitize_textarea_field(wp_unslash($_POST['message'] ?? ''));
+
+    $allowed_sources = array(
+        'contact', 'popup', 'newsletter', 'content-cta',
+        'project-single-sales', 'article-consultation',
+        'footer-quick-lead', 'calculator-lead'
+    );
+    if (!in_array($source, $allowed_sources, true)) {
+        $source = 'contact';
+    }
+
+    $phone_digits = preg_replace('/\D+/', '', $phone);
+    $phone_valid  = '' === $phone || (bool) preg_match('/^(?:84|0)(?:3|5|7|8|9)\d{8}$/', $phone_digits);
+    $email_valid  = '' === $email || is_email($email);
+
+    if (!$phone_valid || !$email_valid || ('' === $phone && '' === $email)) {
+        wp_send_json_error(array('message' => 'Vui lòng nhập số điện thoại hoặc email hợp lệ.'), 422);
+    }
+
+    if ('newsletter' !== $source && vld_string_length($name) < 2) {
+        wp_send_json_error(array('message' => 'Vui lòng nhập họ tên hợp lệ.'), 422);
+    }
+
+    $remote_ip = sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+    $rate_key  = 'vld_lead_' . md5(wp_salt('nonce') . '|' . $remote_ip);
+    $rate      = (int) get_transient($rate_key);
+    if ($rate >= 5) {
+        wp_send_json_error(array('message' => 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau 15 phút.'), 429);
+    }
+    set_transient($rate_key, $rate + 1, 15 * MINUTE_IN_SECONDS);
+
+    // 1. SAVE LEAD SECURELY TO DATABASE FIRST (Zero lead loss)
+    $lead_id = vld_save_lead_to_db(array(
+        'name'       => $name,
+        'phone'      => $phone,
+        'email'      => $email,
+        'project'    => $project,
+        'source'     => $source,
+        'message'    => $message,
+        'ip'         => $remote_ip,
+        'user_agent' => wp_unslash($_SERVER['HTTP_USER_AGENT'] ?? ''),
+    ));
+
+    // 2. DISPATCH EMAIL NOTIFICATION
+    $to      = get_option('admin_email');
+    $subject = '[Văn Lực Land] Đăng ký mới - ' . $source . ' (' . ($project ?: 'Tư vấn chung') . ')';
+    $body    = "Khách hàng mới đã được lưu vào hệ thống (Lead #{$lead_id}).
+
+"
+             . "Họ tên: {$name}
+"
+             . "Điện thoại: {$phone}
+"
+             . "Email: {$email}
+"
+             . "Dự án: {$project}
+"
+             . "Nguồn: {$source}
+"
+             . "Lời nhắn: {$message}
+
+"
+             . "Xem chi tiết tại: " . admin_url('admin.php?page=vld-leads');
+    $headers = array('Content-Type: text/plain; charset=UTF-8');
+
+    @wp_mail($to, $subject, $body, $headers);
+
+    wp_send_json_success(array('message' => 'Đăng ký thành công! Chuyên viên Văn Lực sẽ liên hệ lại ngay.'));
+}
+add_action('wp_ajax_vld_contact', 'vld_handle_contact_form');
+add_action('wp_ajax_nopriv_vld_contact', 'vld_handle_contact_form');
+
+// 7. Technical SEO and structured data
+function vld_has_seo_plugin() {
+    return defined('RANK_MATH_VERSION')
+        || defined('WPSEO_VERSION')
+        || defined('AIOSEO_VERSION');
+}
+
+function vld_schema_same_as() {
+    $candidates = array(
+        vld_option('facebook', ''),
+        vld_option('youtube', ''),
+        vld_option('zalo', ''),
+    );
+    $generic = array(
+        'https://facebook.com',
+        'https://www.facebook.com',
+        'https://youtube.com',
+        'https://www.youtube.com',
+    );
+
+    return array_values(
+        array_filter(
+            array_unique($candidates),
+            function ($url) use ($generic) {
+                return $url && !in_array(untrailingslashit($url), $generic, true);
+            }
+        )
+    );
+}
+
+function vld_current_canonical_url() {
+    if (is_front_page()) {
+        return home_url('/');
+    }
+    if (is_singular()) {
+        return get_permalink(get_queried_object_id());
+    }
+    if (is_category() || is_tax() || is_tag()) {
+        $term_link = get_term_link(get_queried_object_id());
+        if (!is_wp_error($term_link)) {
+            return $term_link;
+        }
+    }
+    if (is_post_type_archive()) {
+        return get_post_type_archive_link(get_query_var('post_type'));
+    }
+
+    global $wp;
+    $request = isset($wp->request) ? $wp->request : '';
+    return home_url('/' . ltrim($request, '/') . '/');
+}
+
+/**
+ * Filter Rank Math canonical fallback for custom taxonomies
+ */
+add_filter('rank_math/frontend/canonical', function($canonical) {
+    if (is_category('cam-nang')) {
+        $hub_url = get_category_link(get_queried_object_id());
+        return is_wp_error($hub_url) ? $canonical : $hub_url;
+    }
+    if (empty($canonical)) {
+        return vld_current_canonical_url();
+    }
+    return $canonical;
+}, 99);
+
+/**
+ * Cẩm nang is a curated content hub with original articles, not a thin tag or
+ * internal search page. Override the stale per-term noindex left in Rank Math.
+ */
+function vld_force_indexable_camnang_hub($robots) {
+    if (!is_category('cam-nang')) {
+        return $robots;
+    }
+
+    unset($robots['noindex'], $robots['nofollow']);
+    $robots['index']  = 'index';
+    $robots['follow'] = 'follow';
+    return $robots;
+}
+add_filter('rank_math/frontend/robots', 'vld_force_indexable_camnang_hub', 999);
+
+function vld_real_estate_agent_schema() {
+    $schema = array(
+        '@type'        => array('Organization', 'RealEstateAgent'),
+        '@id'          => home_url('/#organization'),
+        'name'         => vld_option('brand_name', 'Văn Lực Land'),
+        'url'          => home_url('/'),
+        'image'        => vld_option('seo_social_image', vld_option('slide1_img', VLD_URI . '/assets/images/hero-banner.jpg')),
+        'telephone'    => vld_normalize_phone(vld_option('hotline', '0932.032.111')),
+        'email'        => vld_option('email', 'vanlucland@gmail.com'),
+        'priceRange'   => '$$$',
+        'openingHours' => vld_option('opening_hours', 'Mo-Su 00:00-23:59'),
+        'sameAs'       => array(
+            'https://www.facebook.com/vanlucland',
+            'https://www.youtube.com/@vanlucland',
+            'https://www.linkedin.com/company/vanlucland',
+            'https://twitter.com/vanlucland',
+            'https://www.pinterest.com/vanlucland',
+            'https://zalo.me/0932032111',
+            'https://en.wikialpha.org/wiki/V%C4%83n_L%E1%BB%B1c_Land',
+        ),
+        'address'      => array(
+            '@type'           => 'PostalAddress',
+            'streetAddress'   => vld_option('address', '105 Nguyễn Công Trứ , Q.1, TP.HCM'),
+            'addressLocality' => 'TP. Hồ Chí Minh',
+            'addressRegion'   => 'TP. Hồ Chí Minh',
+            'addressCountry'  => 'VN',
+        ),
+        'geo'          => array(
+            '@type'     => 'GeoCoordinates',
+            'latitude'  => (float) vld_option('geo_latitude', '10.7743'),
+            'longitude' => (float) vld_option('geo_longitude', '106.7031'),
+        ),
+        'areaServed'   => array(
+            array(
+                '@type' => 'AdministrativeArea',
+                'name'  => 'TP. Hồ Chí Minh',
+                '@id'   => 'https://www.wikidata.org/wiki/Q1803',
+            ),
+            array(
+                '@type' => 'AdministrativeArea',
+                'name'  => 'TP. Thủ Đức',
+                '@id'   => 'https://www.wikidata.org/wiki/Q104193856',
+            ),
+            array(
+                '@type' => 'AdministrativeArea',
+                'name'  => 'Khu Nam Sài Gòn (Quận 7, Nhà Bè, Bình Chánh)',
+            ),
+        ),
+        'knowsAbout'   => array(
+            array(
+                '@type'  => 'Thing',
+                'name'   => 'Bất động sản',
+                'sameAs' => 'https://vi.wikipedia.org/wiki/B%E1%BA%A5t_%C4%91%E1%BB%99ng_s%E1%BA%A3n',
+            ),
+            array(
+                '@type'  => 'Place',
+                'name'   => 'TP. Hồ Chí Minh',
+                'sameAs' => 'https://www.wikidata.org/wiki/Q1803',
+            ),
+            array(
+                '@type'  => 'Place',
+                'name'   => 'TP. Thủ Đức',
+                'sameAs' => 'https://www.wikidata.org/wiki/Q104193856',
+            ),
+            array(
+                '@type'  => 'Place',
+                'name'   => 'Khu đô thị Nam Sài Gòn',
+                'sameAs' => 'https://vi.wikipedia.org/wiki/Khu_%C4%91%C3%B4_th%E1%BB%8B_Nam_S%C3%A0i_G%C3%B2n',
+            ),
+            array(
+                '@type'  => 'Thing',
+                'name'   => 'Thẩm định giá và Đầu tư Bất động sản',
+                'sameAs' => 'https://www.wikidata.org/wiki/Q6507412',
+            ),
+        ),
+        'founder'      => array(
+            '@type'    => 'Person',
+            'name'     => 'Văn Lực',
+            'url'      => home_url('/gioi-thieu/'),
+            'jobTitle' => 'Chuyên gia tư vấn Bất động sản cao cấp',
+        ),
+    );
+
+    $logo_id = get_theme_mod('custom_logo');
+    if ($logo_id) {
+        $logo_url = wp_get_attachment_image_url($logo_id, 'full');
+        if ($logo_url) {
+            $schema['logo'] = array(
+                '@type' => 'ImageObject',
+                'url'   => $logo_url,
+            );
+        }
+    } elseif (get_site_icon_url(512)) {
+        $schema['logo'] = array(
+            '@type' => 'ImageObject',
+            'url'   => get_site_icon_url(512),
+        );
+    }
+
+    $same_as = vld_schema_same_as();
+    if ($same_as) {
+        $schema['sameAs'] = $same_as;
+    }
+
+    return $schema;
+}
+
+function vld_breadcrumb_schema() {
+    if (is_front_page()) {
+        return array();
+    }
+
+    $items = array(
+        array(
+            '@type'    => 'ListItem',
+            'position' => 1,
+            'name'     => 'Trang chủ',
+            'item'     => home_url('/'),
+        ),
+    );
+
+    if (is_singular('du_an')) {
+        $items[] = array(
+            '@type'    => 'ListItem',
+            'position' => 2,
+            'name'     => 'Dự án',
+            'item'     => get_post_type_archive_link('du_an'),
+        );
+    } elseif (is_singular('post')) {
+        $categories = get_the_category(get_queried_object_id());
+        if ($categories) {
+            $items[] = array(
+                '@type'    => 'ListItem',
+                'position' => 2,
+                'name'     => $categories[0]->name,
+                'item'     => get_category_link($categories[0]->term_id),
+            );
+        }
+    }
+
+    if (is_singular()) {
+        $items[] = array(
+            '@type'    => 'ListItem',
+            'position' => count($items) + 1,
+            'name'     => get_the_title(get_queried_object_id()),
+            'item'     => get_permalink(get_queried_object_id()),
+        );
+    } elseif (is_category()) {
+        $items[] = array(
+            '@type'    => 'ListItem',
+            'position' => 2,
+            'name'     => single_cat_title('', false),
+            'item'     => get_category_link(get_queried_object_id()),
+        );
+    } elseif (is_post_type_archive()) {
+        $items[] = array(
+            '@type'    => 'ListItem',
+            'position' => 2,
+            'name'     => post_type_archive_title('', false),
+            'item'     => get_post_type_archive_link(get_query_var('post_type')),
+        );
+    }
+
+    if (count($items) < 2) {
+        return array();
+    }
+
+    return array(
+        '@type'           => 'BreadcrumbList',
+        '@id'             => vld_current_canonical_url() . '#breadcrumb',
+        'itemListElement' => $items,
+    );
+}
+
+/**
+ * Enhance Rank Math's graph instead of printing a second competing graph.
+ */
+function vld_rank_math_schema($data, $jsonld) {
+    $organization_found = false;
+    $organization_id    = home_url('/#organization');
+    $business_key       = null;
+    foreach ($data as $key => $entity) {
+        $types = isset($entity['@type']) ? (array) $entity['@type'] : array();
+        if (!array_intersect($types, array('Organization', 'RealEstateAgent'))) {
+            continue;
+        }
+
+        // Keep one canonical business node. Rank Math or an older schema
+        // extension may otherwise leave a second RealEstateAgent in the graph.
+        if (null !== $business_key) {
+            unset($data[$key]);
+            continue;
+        }
+
+        $organization_found = true;
+        $business_key       = $key;
+        $agent = vld_real_estate_agent_schema();
+        $data[$key] = array_merge($entity, $agent);
+
+        // Rank Math can retain Person from an older knowledge-graph setting.
+        // A business entity must stay Organization + RealEstateAgent; the
+        // article author remains a separate Person in Article.author.
+        $business_types = array_values(array_diff($types, array('Person')));
+        $data[$key]['@type'] = array_values(
+            array_unique(array_merge($business_types, array('Organization', 'RealEstateAgent')))
+        );
+        $data[$key]['@id'] = $organization_id;
+    }
+
+    if (!$organization_found && is_front_page()) {
+        $data['vld-real-estate-agent'] = vld_real_estate_agent_schema();
+    }
+
+    $has_breadcrumb = false;
+    foreach ($data as $key => $entity) {
+        if (in_array('BreadcrumbList', (array) ($entity['@type'] ?? array()), true)) {
+            if ($has_breadcrumb) {
+                unset($data[$key]);
+                continue;
+            }
+            $has_breadcrumb = true;
+        }
+    }
+
+    $breadcrumb = vld_breadcrumb_schema();
+    if (!$has_breadcrumb && $breadcrumb) {
+        $data['vld-breadcrumb'] = $breadcrumb;
+    }
+
+    if (is_singular('post')) {
+        $has_article = false;
+        foreach ($data as $entity) {
+            $types = (array) ($entity['@type'] ?? array());
+            if (array_intersect($types, array('Article', 'BlogPosting', 'NewsArticle'))) {
+                $has_article = true;
+                break;
+            }
+        }
+
+        if (!$has_article) {
+            $article                       = vld_article_schema(get_queried_object_id());
+            $article['publisher']['@id']   = $organization_id;
+            $data['vld-article']           = $article;
+        }
+    }
+
+    /*
+     * Normalize article relationships against the single business entity.
+     * Rank Math can retain a stale #person publisher after the Knowledge Graph
+     * is switched from Person to Organization, leaving an unresolved node.
+     */
+    if (is_singular(array('post', 'du_an'))) {
+        $post_id       = get_queried_object_id();
+        $canonical     = vld_current_canonical_url();
+        $article_id    = $canonical . '#article';
+        $author_node_id = $canonical . '#author';
+        $author_user_id = (int) get_post_field('post_author', $post_id);
+        $author_name    = trim((string) get_the_author_meta('display_name', $author_user_id));
+        $author_name    = $author_name ?: 'Văn Lực';
+        $author_profile_url = home_url('/gioi-thieu/');
+        $image_url      = get_the_post_thumbnail_url($post_id, 'full');
+        $has_article    = false;
+        $author_key     = null;
+
+        foreach ($data as $key => $entity) {
+            $types = (array) ($entity['@type'] ?? array());
+            if (array_intersect($types, array('Article', 'BlogPosting', 'NewsArticle'))) {
+                $has_article = true;
+                if (empty($data[$key]['@id'])) {
+                    $data[$key]['@id'] = $article_id;
+                }
+                $data[$key]['mainEntityOfPage'] = array('@id' => $canonical . '#webpage');
+                $data[$key]['author'] = array('@id' => $author_node_id);
+                $data[$key]['publisher'] = array('@id' => $organization_id);
+                $data[$key]['copyrightHolder'] = array('@id' => $organization_id);
+
+                foreach (array('headline', 'name', 'description') as $text_key) {
+                    if (!empty($data[$key][$text_key])) {
+                        $decoded_text = wp_strip_all_tags((string) $data[$key][$text_key]);
+                        // Some imported Rank Math titles were encoded twice.
+                        for ($decode_pass = 0; $decode_pass < 3; $decode_pass++) {
+                            $next_text = html_entity_decode($decoded_text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                            if ($next_text === $decoded_text) {
+                                break;
+                            }
+                            $decoded_text = $next_text;
+                        }
+                        $data[$key][$text_key] = $decoded_text;
+                    }
+                }
+
+                if ($image_url && empty($data[$key]['image'])) {
+                    $data[$key]['image'] = array($image_url);
+                }
+            }
+
+            if (
+                in_array('Person', $types, true)
+                && isset($entity['@id'])
+                && '#author' === substr((string) $entity['@id'], -7)
+            ) {
+                $author_key = $key;
+            }
+        }
+
+        if ($has_article) {
+            if (null === $author_key) {
+                $author_key = 'vld-author';
+                $data[$author_key] = array('@type' => 'Person');
+            }
+            $data[$author_key]['@type'] = 'Person';
+            $data[$author_key]['@id'] = $author_node_id;
+            $data[$author_key]['name'] = $author_name;
+            $data[$author_key]['url'] = $author_profile_url;
+        }
+    }
+
+    // Google does not show self-serving review snippets for an Organization or
+    // LocalBusiness on its own site. Keep review/rating markup out of this
+    // business graph while leaving visible customer comments untouched.
+    foreach ($data as $key => $entity) {
+        $types = (array) ($entity['@type'] ?? array());
+        if (array_intersect($types, array('Review', 'Rating', 'AggregateRating'))) {
+            unset($data[$key]);
+        }
+    }
+
+    $remove_unverified_ratings = static function ($value) use (&$remove_unverified_ratings) {
+        if (!is_array($value)) {
+            return $value;
+        }
+        unset($value['aggregateRating'], $value['review'], $value['reviewRating']);
+        foreach ($value as $key => $child) {
+            $value[$key] = $remove_unverified_ratings($child);
+        }
+        return $value;
+    };
+
+    return $remove_unverified_ratings(array_values($data));
+}
+add_filter('rank_math/json_ld', 'vld_rank_math_schema', 90, 2);
+
+function vld_seo_head_markup() {
+    if (vld_has_seo_plugin()) {
+        return;
+    }
+
+    $site_name = vld_option('brand_name', 'Văn Lực Land');
+    $site_desc = is_front_page() ? vld_front_page_seo_description() : wp_strip_all_tags(get_the_excerpt());
+    $permalink = vld_current_canonical_url();
+    $og_image  = vld_social_image_url();
+
+    if (!$site_desc) {
+        $site_desc = get_bloginfo('description');
+    }
+
+    echo '<meta name="description" content="' . esc_attr($site_desc) . '">' . "\n";
+    if (!is_search() && !is_404()) {
+        echo '<link rel="canonical" href="' . esc_url($permalink) . '">' . "\n";
+    }
+
+    echo '<meta property="og:type" content="' . (is_single() ? 'article' : 'website') . '" />' . "\n";
+    echo '<meta property="og:url" content="' . esc_url($permalink) . '" />' . "\n";
+    echo '<meta property="og:title" content="' . esc_attr(wp_get_document_title()) . '" />' . "\n";
+    echo '<meta property="og:description" content="' . esc_attr($site_desc) . '" />' . "\n";
+    echo '<meta property="og:image" content="' . esc_url($og_image) . '" />' . "\n";
+    $og_attachment_id = attachment_url_to_postid($og_image);
+    if ($og_attachment_id) {
+        $og_meta = wp_get_attachment_metadata($og_attachment_id);
+        if (!empty($og_meta['width']) && !empty($og_meta['height'])) {
+            echo '<meta property="og:image:width" content="' . esc_attr($og_meta['width']) . '" />' . "\n";
+            echo '<meta property="og:image:height" content="' . esc_attr($og_meta['height']) . '" />' . "\n";
+        }
+    }
+    echo '<meta property="og:image:alt" content="' . esc_attr(wp_get_document_title()) . '" />' . "\n";
+    echo '<meta property="og:site_name" content="' . esc_attr($site_name) . '" />' . "\n";
+    echo '<meta property="og:locale" content="vi_VN" />' . "\n";
+
+    echo '<meta name="twitter:card" content="summary_large_image" />' . "\n";
+    echo '<meta name="twitter:title" content="' . esc_attr(wp_get_document_title()) . '" />' . "\n";
+    echo '<meta name="twitter:description" content="' . esc_attr($site_desc) . '" />' . "\n";
+    echo '<meta name="twitter:image" content="' . esc_url($og_image) . '" />' . "\n";
+    echo '<meta name="twitter:image:alt" content="' . esc_attr(wp_get_document_title()) . '" />' . "\n";
+
+    // The former Sitelinks Search Box action is intentionally omitted because
+    // Google retired that visual feature in November 2024.
+    if (is_front_page()) {
+        $schema = array(
+            '@context' => 'https://schema.org',
+            '@graph'   => array(
+                vld_real_estate_agent_schema(),
+                array(
+                    '@type' => 'WebSite',
+                    '@id'   => home_url('/#website'),
+                    'url'   => home_url('/'),
+                    'name'  => vld_option('brand_name', 'Văn Lực Land'),
+                ),
+            ),
+        );
+        echo '<script type="application/ld+json">' . wp_json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . '</script>' . "\n";
+    } else {
+        $graph      = array();
+        $breadcrumb = vld_breadcrumb_schema();
+
+        if (is_singular('post')) {
+            $graph[] = vld_real_estate_agent_schema();
+            $graph[] = vld_article_schema(get_queried_object_id());
+        }
+        if ($breadcrumb) {
+            $graph[] = $breadcrumb;
+        }
+
+        if ($graph) {
+            echo '<script type="application/ld+json">' . wp_json_encode(
+                array(
+                    '@context' => 'https://schema.org',
+                    '@graph'   => $graph,
+                ),
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            ) . '</script>' . "\n";
+        }
+    }
+}
+add_action('wp_head', 'vld_seo_head_markup');
+
+function vld_disable_core_canonical_when_using_fallback() {
+    if (!vld_has_seo_plugin()) {
+        remove_action('wp_head', 'rel_canonical');
+    }
+}
+add_action('wp', 'vld_disable_core_canonical_when_using_fallback');
+
+/**
+ * Return the live sitemap managed by the active SEO layer.
+ *
+ * Rank Math and Yoast use sitemap_index.xml. AIOSEO uses sitemap.xml. When no
+ * SEO plugin is active, WordPress core keeps the sitemap current at
+ * wp-sitemap.xml. A static XML file inside the theme would become stale as
+ * soon as a post or project is published.
+ */
+function vld_sitemap_url() {
+    if (
+        defined('RANK_MATH_VERSION')
+        || class_exists('RankMath')
+        || defined('WPSEO_VERSION')
+    ) {
+        return home_url('/sitemap_index.xml');
+    }
+
+    if (defined('AIOSEO_VERSION')) {
+        return home_url('/sitemap.xml');
+    }
+
+    return home_url('/wp-sitemap.xml');
+}
+
+/**
+ * Serve the root /robots.txt through WordPress, so the one theme ZIP is enough
+ * and there is no separate file to upload to public_html.
+ *
+ * WordPress bypasses this filter when a physical robots.txt already exists.
+ * The website privacy setting is respected: when indexing is disabled, core
+ * WordPress keeps its blocking response.
+ */
+function vld_virtual_robots_txt($output, $public) {
+    if ('0' === (string) $public) {
+        return $output;
+    }
+
+    $rules = array(
+        'User-agent: *',
+        'Disallow: /wp-admin/',
+        'Disallow: /wp-login.php',
+        'Disallow: /xmlrpc.php',
+        'Disallow: /?s=',
+        'Disallow: /search/',
+        'Disallow: /*?replytocom=',
+        'Disallow: /wp-json/',
+        'Allow: /wp-json/oembed/',
+        'Disallow: /wp-includes/',
+        'Allow: /wp-includes/js/',
+        'Allow: /wp-includes/css/',
+        'Disallow: /cgi-bin/',
+        'Disallow: /trackback/',
+        'Allow: /feed/',
+        'Disallow: /comments/feed/',
+        'Disallow: /*/feed/',
+        'Allow: /wp-admin/admin-ajax.php',
+        'Allow: /wp-content/uploads/',
+        '',
+        '# AI Search & GEO Crawlers',
+        'User-agent: GPTBot',
+        'Allow: /',
+        '',
+        'User-agent: ClaudeBot',
+        'Allow: /',
+        '',
+        'User-agent: PerplexityBot',
+        'Allow: /',
+        '',
+        'User-agent: Applebot-Extended',
+        'Allow: /',
+        '',
+        'User-agent: Google-Extended',
+        'Allow: /',
+        '',
+        'User-agent: Bytespider',
+        'Allow: /',
+        '',
+        '# Aggressive Scraper Throttling',
+        'User-agent: AhrefsBot',
+        'Crawl-delay: 10',
+        '',
+        'User-agent: SemrushBot',
+        'Crawl-delay: 10',
+        '',
+        'User-agent: DotBot',
+        'Disallow: /',
+        '',
+        'User-agent: MJ12bot',
+        'Disallow: /',
+        '',
+        'Sitemap: ' . vld_sitemap_url(),
+    );
+
+    return implode("\n", $rules) . "\n";
+}
+add_filter('robots_txt', 'vld_virtual_robots_txt', 99, 2);
+
+/**
+ * Keep the familiar /sitemap.xml address working without maintaining a second
+ * sitemap. Rank Math remains authoritative on the current installation; core
+ * WordPress is the automatic fallback when the SEO plugin is unavailable.
+ */
+function vld_redirect_sitemap_alias() {
+    if (is_admin() || wp_doing_ajax()) {
+        return;
+    }
+
+    $request_path = isset($_SERVER['REQUEST_URI'])
+        ? wp_parse_url(wp_unslash($_SERVER['REQUEST_URI']), PHP_URL_PATH)
+        : '';
+    $alias_path   = wp_parse_url(home_url('/sitemap.xml'), PHP_URL_PATH);
+    $target       = vld_sitemap_url();
+
+    if (
+        $request_path
+        && untrailingslashit($request_path) === untrailingslashit($alias_path)
+        && untrailingslashit($target) !== untrailingslashit(home_url('/sitemap.xml'))
+    ) {
+        wp_safe_redirect($target, 301, 'Văn Lực Land');
+        exit;
+    }
+}
+add_action('template_redirect', 'vld_redirect_sitemap_alias', 0);
+
+/**
+ * Redirect verified legacy content URLs to their exact replacement pages.
+ *
+ * Keep this list deliberately small: unrelated missing URLs must continue to
+ * return a real 404 instead of being sent to the homepage.
+ */
+function vld_redirect_verified_legacy_content() {
+    if (is_admin() || wp_doing_ajax()) {
+        return;
+    }
+
+    $method = isset($_SERVER['REQUEST_METHOD'])
+        ? strtoupper(sanitize_text_field(wp_unslash($_SERVER['REQUEST_METHOD'])))
+        : 'GET';
+    if (!in_array($method, array('GET', 'HEAD'), true)) {
+        return;
+    }
+
+    $request_path = isset($_SERVER['REQUEST_URI'])
+        ? wp_parse_url(wp_unslash($_SERVER['REQUEST_URI']), PHP_URL_PATH)
+        : '';
+    if (!$request_path) {
+        return;
+    }
+
+    $request_path = '/' . ltrim(rawurldecode($request_path), '/');
+    $lookup_path = untrailingslashit($request_path);
+
+    // Strip crawler-appended phone, sms, or null suffixes and redirect 301 to canonical page
+    if (preg_match('#^(.+)/(tel:[0-9+]+|sms:[0-9+]+|[0-9]{10}|null)$#i', $lookup_path, $matches)) {
+        wp_safe_redirect(home_url($matches[1] . '/'), 301, 'Văn Lực Land');
+        exit;
+    }
+
+    // Redirect legacy attachment URLs or deleted post subpages
+    if (preg_match('#^/(can-ho-imperium-town-nha-trang|five-star-eco-city-khu-do-thi|du-an-the-sky-riverside-long-an|du-an-dat-tho-cu-loc-tan-bao-loc|du-an-can-ho-essensia-nam-sai-gon|du-an-can-ho-bcons-bee|du-an-can-ho-d-aqua|du-an-can-ho-the-myra-tan-hung|du-an-the-5-way-phu-quoc-can-ho-bien-vinhomes|du-an-casa-marina-premium-quy-nhon|can-ho-essensia-sky|du-an-the-apus-phuoc-hai-ba-ria-vung-tau-2)/#i', $lookup_path)) {
+        wp_safe_redirect(home_url('/du-an/'), 301, 'Văn Lực Land');
+        exit;
+    }
+
+    $legacy_map = array(
+        '/bang-tinh-lai-vay-mua-nha-tra-gop' => '/bang-tinh-lai-vay/',
+        '/du-an/the-classia-khang-dien-⭐️【gia-16-ty-can-lo-dep-nhat】' => '/du-an/the-classia-khang-dien-thu-duc/',
+        '/du-an/can-ho-ansana-by-kita' => '/can-ho-ansana-by-kita-vo-van-kiet-binh-tan/',
+        '/du-an/can-ho-the-win-city' => '/8-ly-do-de-an-cu-va-dau-tu-tai-the-win-city-can-ho-cua-ngo-tay-sai-gon/',
+        '/du-an/du-an-arcadia-at-lavila' => '/du-an/can-ho-arcadia-at-lavila/',
+        '/du-an/co-nen-mua-arcadia-at-lavila-khong-goc-nhin-thuc-te-cho-nguoi-mua-o-va-nha-dau-tu' => '/du-an/can-ho-arcadia-at-lavila/',
+        '/tin-tuc/co-nen-mua-arcadia-at-lavila' => '/co-nen-mua-arcadia-at-lavila-khong/',
+        '/co-nen-mua-arcadia-at-lavila-khong-goc-nhin-thuc-te-cho-nguoi-mua-o-va-nha-dau-tu' => '/co-nen-mua-arcadia-at-lavila-khong/',
+        '/tin-tuc/9-ly-do-dang-can-nhac-de-o-va-dau-tu-tai-ansana-by-kita' => '/9-ly-do-dang-can-nhac-de-o-va-dau-tu-tai-ansana-by-kita/',
+        '/du-thuc-hien' => '/du-an/',
+        '/project/celesta-gold-nha-be' => '/du-an/can-ho-celesta-gold/',
+        '/project/du-an-arcadia-at-lavila' => '/du-an/can-ho-arcadia-at-lavila/',
+        '/project/trellia-cove-nam-long-oc-dao-xanh-tai-mizuki-park' => '/du-an/trellia-cove-nam-long-phan-khu-compound-cuoi-cung-tai-mizuki-park-oc-dao-xanh/',
+        '/project/can-ho-the-win-city' => '/8-ly-do-de-an-cu-va-dau-tu-tai-the-win-city-can-ho-cua-ngo-tay-sai-gon/',
+        '/8-ly-do-de-an-cu-va-dau-tu-tai-the-win-city-duc-hoa-long-an' => '/8-ly-do-de-an-cu-va-dau-tu-tai-the-win-city-can-ho-cua-ngo-tay-sai-gon/',
+        '/project/danh-gia-chi-tiet-tbs-green-skyline-green-tower-di-an' => '/danh-gia-chi-tiet-tbs-green-skyline-green-tower-di-an-tam-diem-can-ho-cao-cap-tai-tp-di-an/',
+        '/project/can-ho-ansana-by-kita' => '/can-ho-ansana-by-kita-vo-van-kiet-binh-tan/',
+        '/bds' => '/du-an/',
+        '/project' => '/du-an/',
+
+        // Consolidated September 2026 after a full similarity audit. These
+        // short articles repeated the corresponding pillar page instead of
+        // serving a distinct search intent; one permanent destination keeps
+        // signals and internal links from competing with each other.
+        '/tien-do-va-dau-tu-trellia-cove-mizuki-park-2026' => '/du-an/can-ho-trellia-cove-mizuki-park/',
+        '/co-nen-dau-tu-tt-city-millennia-long-hau-2026' => '/du-an/du-an-tt-city-millennia-long-hau/',
+        '/gia-can-ho-tp-hcm-vuot-100-trieu-m2' => '/loat-chung-cu-gia-tram-trieu-dong-moi-m2-mo-ban-tai-tp-hcm/',
+        '/tien-do-khai-hoan-prime-nha-be-cap-nhat-xay-dung' => '/tien-do-khai-hoan-prime-nha-be/',
+        '/co-nen-mua-nha-pho-the-classia-khang-dien-2026' => '/du-an/the-classia-khang-dien-thu-duc/',
+                                        '/phap-ly-celesta-gold-nha-be-so-hong-giay-phep-2026' => '/phap-ly-celesta-gold-nha-be-so-hong-giay-phep/',
+        '/phap-ly-tien-do-boi-thuong-gpmb-vinhomes-phuoc-vinh-tay-2026' => '/phap-ly-tien-do-boi-thuong-gpmb-vinhomes-phuoc-vinh-tay/',
+        '/co-nen-mua-bds-don-song-vinhomes-phuoc-vinh-tay-can-giuoc-2026' => '/co-nen-mua-bds-don-song-vinhomes-phuoc-vinh-tay-can-giuoc/',
+        '/tien-do-celesta-gold-nha-be-cap-nhat-xay-dung-2026' => '/tien-do-celesta-gold-nha-be-cap-nhat-xay-dung/',
+        '/dau-tu-celesta-gold-nha-be-co-loi-khong-phan-tich-2026' => '/dau-tu-celesta-gold-nha-be-co-loi-khong-phan-tich/',
+                '/du-an/du-an-hiep-phuoc-premia-long-an' => '/du-an/dat-nen-hiep-phuoc-premia-nha-be/',
+        '/tim-bat-dong-san' => '/du-an/',
+        '/dang-tin' => '/lien-he/',
+        '/du-an-md-home-tan-phu' => '/du-an/',
+        '/du-an-the-apus-phuoc-hai-ba-ria-vung-tau-2' => '/du-an/',
+        '/category/2403' => '/quy-hoach/',
+
+        // Newly consolidated March/September 2026 legacy URLs & 404 elimination
+        '/du-an/celesta-gold-nha-be' => '/du-an/can-ho-celesta-gold/',
+        '/du-an/can-ho-tt-genesis-thong-tin-tt-capital-2' => '/du-an/du-an-tt-genesis-dao-su-tich-nha-be-bang-gia-uu-dai/',
+        '/huong-dan-bang-tinh-lai-suat-vay-mua-nha-2026-2' => '/huong-dan-bang-tinh-lai-suat-vay-mua-nha/',
+        '/du-an-can-ho-biet-thu-the-apus-phuoc-hai' => '/du-an/',
+        '/du-an-an-lake-villas' => '/du-an/',
+        '/du-an-can-ho-bcons-bee' => '/du-an/',
+        '/du-an-can-ho-d-aqua' => '/du-an/',
+        '/du-an-can-ho-the-myra-tan-hung' => '/du-an/',
+        '/du-an-can-ho-dich-vu-334-luy-ban-bic' => '/du-an/',
+        '/dat-nen-kinh-duong-vuong-binh-tan' => '/du-an/',
+        '/du-an-long-phat-residence-dat-nen-san-bay-long-thanh' => '/du-an/',
+        '/sun-valley-bao-loc' => '/du-an/',
+        '/bao-loc-tu-vung-trung-den-kenh-dau-tu-vip-cua-bat-dong-san-nghi-duong' => '/tin-tuc/',
+        '/can-ho-imperium-town-nha-trang' => '/du-an/',
+        '/du-an-the-5-way-phu-quoc-can-ho-bien-vinhomes' => '/du-an/',
+        '/five-star-eco-city-khu-do-thi' => '/du-an/',
+        '/phan-khu-lucky-park-cua-five-star-eco-city' => '/du-an/',
+        '/cap-nhat-tien-do-moi-nhat-du-an-five-star-eco-city' => '/du-an/',
+        '/cho-thue-can-ho-chung-cu-nam-cuong2-phong-ngu-full-do-gia-9tr-lh' => '/danh-muc-du-an/can-ho-chung-cu/',
+        '/contact' => '/lien-he/',
+        '/about-us' => '/gioi-thieu/',
+        '/thanh-toan' => '/lien-he/',
+        '/reset-password' => '/lien-he/',
+        '/tim-du-an' => '/du-an/',
+        '/wellness-second-home-la-gi' => '/tin-tuc/',
+        '/anh-thi-truong-bds-dang-bi-gioi-sieu-giau-thao-tung-ra-sao' => '/tin-tuc/',
+        '/nhung-chieu-tro-du-mua-nha-dat-khach-sap-bay-lo-nang-ban-lo' => '/tin-tuc/',
+        '/nhu-cau-so-huu-can-ho-nghi-duong-tang-manh-sau-dich-covid-2' => '/tin-tuc/',
+        '/phong-thuy/trellia-cove-nam-long-phan-khu-compound-cuoi-cung-tai-mizuki-park-oc-dao-xanh' => '/trellia-cove-mizuki-park-compound-ven-song-cuoi-cung-nam-long/',
+        '/danh-muc-du-an/bds-nghi-duong' => '/du-an/',
+        '/sitemap.txt' => '/sitemap_index.xml',
+    );
+
+    if (isset($legacy_map[$lookup_path])) {
+        wp_safe_redirect(home_url($legacy_map[$lookup_path]), 301, 'Văn Lực Land');
+        exit;
+    }
+
+    // Pattern matching for legacy /bds/, /project/, /tinh-thanh/
+    if (0 === strpos($lookup_path, '/bds/') || 0 === strpos($lookup_path, '/project/') || 0 === strpos($lookup_path, '/tinh-thanh/') || 0 === strpos($lookup_path, '/tinh-thanh-du-an/')) {
+        wp_safe_redirect(home_url('/du-an/'), 301, 'Văn Lực Land');
+        exit;
+    }
+}
+// Run before SEO-plugin redirect rules so mapped legacy paths go straight to
+// their canonical destination instead of creating an avoidable redirect chain.
+add_action('template_redirect', 'vld_redirect_verified_legacy_content', -9999);
+add_action('parse_request', 'vld_redirect_verified_legacy_content', -9999);
+
+/**
+ * A physical file in the web root takes precedence over WordPress. Warn the
+ * administrator instead of deleting a host-level file automatically.
+ */
+function vld_seo_file_conflict_notice() {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+
+    $conflicts = array();
+    foreach (array('robots.txt', 'sitemap.xml') as $filename) {
+        if (file_exists(ABSPATH . $filename)) {
+            $conflicts[] = $filename;
+        }
+    }
+
+    if (!$conflicts) {
+        return;
+    }
+
+    echo '<div class="notice notice-warning"><p>';
+    echo esc_html(
+        sprintf(
+            __('Văn Lực Land All-in-One: hãy xóa file vật lý cũ %s khỏi thư mục gốc website để WordPress dùng robots và sitemap động của theme.', 'vanlucland-developer'),
+            implode(', ', $conflicts)
+        )
+    );
+    echo '</p></div>';
+}
+add_action('admin_notices', 'vld_seo_file_conflict_notice');
+
+// =====================================================
+// 8. CUSTOM POST TYPE — Dự án Bất Động Sản
+// =====================================================
+function vld_register_project_cpt() {
+    $labels = array(
+        'name'               => 'Dự án',
+        'singular_name'      => 'Dự án',
+        'menu_name'          => 'Dự án BĐS',
+        'add_new'            => 'Thêm dự án',
+        'add_new_item'       => 'Thêm dự án mới',
+        'edit_item'          => 'Sửa dự án',
+        'new_item'           => 'Dự án mới',
+        'view_item'          => 'Xem dự án',
+        'search_items'       => 'Tìm dự án',
+        'not_found'          => 'Không tìm thấy dự án',
+        'not_found_in_trash' => 'Không có dự án trong thùng rác',
+        'all_items'          => 'Tất cả dự án',
+    );
+
+    $args = array(
+        'labels'             => $labels,
+        'public'             => true,
+        'has_archive'        => true,
+        'rewrite'            => array('slug' => 'du-an'),
+        'supports'           => array('title', 'editor', 'thumbnail', 'excerpt'),
+        'taxonomies'         => array('danh_muc_du_an'),
+        'menu_icon'          => 'dashicons-building',
+        'menu_position'      => 5,
+        'show_in_rest'       => true,
+    );
+
+    register_post_type('du_an', $args);
+
+    // 8.1 One dedicated project taxonomy. Posts keep their own categories/tags.
+    $tax_labels = array(
+        'name'              => 'Loại hình dự án',
+        'singular_name'     => 'Loại hình dự án',
+        'search_items'      => 'Tìm loại hình',
+        'all_items'         => 'Tất cả loại hình',
+        'parent_item'       => 'Loại hình cha',
+        'parent_item_colon' => 'Loại hình cha:',
+        'edit_item'         => 'Sửa loại hình',
+        'update_item'       => 'Cập nhật loại hình',
+        'add_new_item'      => 'Thêm loại hình',
+        'new_item_name'     => 'Tên loại hình mới',
+        'menu_name'         => 'Loại hình dự án',
+    );
+
+    $tax_args = array(
+        'hierarchical'      => true, // Hiển thị dạng ô tick chọn (Checkbox)
+        'labels'            => $tax_labels,
+        'show_ui'           => true,
+        'show_admin_column' => true,
+        'query_var'         => true,
+        'rewrite'           => array('slug' => 'danh-muc-du-an'),
+        'show_in_rest'      => true,
+        'meta_box_cb'       => 'vld_project_type_meta_box',
+    );
+
+    register_taxonomy('danh_muc_du_an', array('du_an'), $tax_args);
+
+}
+add_action('init', 'vld_register_project_cpt');
+
+/**
+ * Keep every public project listing predictable and paginated.
+ *
+ * This applies only to the main query on the project archive and project
+ * taxonomy pages. The featured-project query on the front page and all admin
+ * screens keep their existing limits.
+ */
+function vld_project_archive_posts_per_page($query) {
+    if (is_admin() || !$query->is_main_query()) {
+        return;
+    }
+
+    if ($query->is_post_type_archive('du_an') || $query->is_tax('danh_muc_du_an')) {
+        $query->set('posts_per_page', 6);
+    }
+}
+add_action('pre_get_posts', 'vld_project_archive_posts_per_page', 20);
+
+/**
+ * Automatically include child categories (Phap Ly BDS, Tai Chinh & Lai Vay, Danh Gia Du An)
+ * when querying the main 'Cam Nang Mua Nha' category archive.
+ */
+function vld_cam_nang_include_subcategories($query) {
+    if (is_admin() || !$query->is_main_query()) {
+        return;
+    }
+
+    if ($query->is_category('cam-nang')) {
+        $cam_nang_id = 6;
+        $child_cat_ids = get_term_children($cam_nang_id, 'category');
+        $all_cat_ids = array_merge(
+            array($cam_nang_id, 2405, 2407), // 2405: Phap Ly BDS, 2407: Danh Gia Du An
+            is_array($child_cat_ids) ? $child_cat_ids : array()
+        );
+        $all_cat_ids = array_unique(array_filter(array_map('intval', $all_cat_ids)));
+
+        $query->set('category_name', '');
+        $query->set('category__in', $all_cat_ids);
+    }
+}
+add_action('pre_get_posts', 'vld_cam_nang_include_subcategories', 20);
+
+/**
+ * Old releases mixed display positions into the project taxonomy. Preserve
+ * those terms in storage for reversibility, but keep them out of current admin
+ * selectors and the block editor's taxonomy panel.
+ */
+function vld_hide_legacy_project_position_terms($terms, $taxonomies) {
+    $is_rest_request = defined('REST_REQUEST') && REST_REQUEST;
+    if ((!is_admin() && !$is_rest_request) || !in_array('danh_muc_du_an', (array) $taxonomies, true)) {
+        return $terms;
+    }
+    if (!is_array($terms)) {
+        return $terms;
+    }
+
+    $legacy_names = array('Dự án Nổi bật Trang chủ');
+    $legacy_slugs = array('du-an-noi-bat-trang-chu');
+
+    return array_values(
+        array_filter(
+            $terms,
+            static function ($term) use ($legacy_names, $legacy_slugs) {
+                if (!($term instanceof WP_Term)) {
+                    return true;
+                }
+                return !in_array($term->name, $legacy_names, true)
+                    && !in_array($term->slug, $legacy_slugs, true);
+            }
+        )
+    );
+}
+add_filter('get_terms', 'vld_hide_legacy_project_position_terms', 10, 2);
+
+/**
+ * Canonical project types. The legacy meta value remains available so old
+ * projects and front-end filters keep working after the taxonomy cleanup.
+ */
+function vld_project_type_definitions() {
+    return array(
+        'can-ho' => array(
+            'name'      => 'Căn hộ chung cư',
+            'term_slug' => 'can-ho-chung-cu',
+        ),
+        'dat-nen' => array(
+            'name'      => 'Đất nền dự án',
+            'term_slug' => 'dat-nen-du-an',
+        ),
+        'biet-thu' => array(
+            'name'      => 'Biệt thự / Nhà phố',
+            'term_slug' => 'biet-thu-nha-pho',
+        ),
+        'nghi-duong' => array(
+            'name'      => 'BĐS Nghỉ dưỡng',
+            'term_slug' => 'bds-nghi-duong',
+        ),
+    );
+}
+
+/**
+ * Keep the project type selector deliberately single-purpose. Legacy display
+ * terms stay in the database for safety but are not mixed into this control.
+ */
+function vld_project_type_meta_box($post, $box) {
+    $taxonomy = $box['args']['taxonomy'] ?? 'danh_muc_du_an';
+    $selected = wp_get_object_terms($post->ID, $taxonomy, array('fields' => 'ids'));
+    $selected = is_wp_error($selected) ? array() : array_map('intval', $selected);
+
+    wp_nonce_field('taxonomy_' . $taxonomy, 'taxonomy_noncename');
+    ?>
+    <div class="vld-project-type-box">
+        <p style="margin:0 0 10px;color:#50575e;">
+            <?php esc_html_e('Chọn một loại hình chính để lọc dự án ngoài website.', 'vanlucland-developer'); ?>
+        </p>
+        <input type="hidden" name="tax_input[<?php echo esc_attr($taxonomy); ?>][]" value="0">
+        <?php foreach (vld_project_type_definitions() as $legacy_value => $definition) : ?>
+            <?php
+            $term = get_term_by('slug', $definition['term_slug'], $taxonomy);
+            if (!$term) {
+                $term = get_term_by('name', $definition['name'], $taxonomy);
+            }
+            if (!$term || is_wp_error($term)) {
+                continue;
+            }
+            ?>
+            <p style="margin:8px 0;">
+                <label for="vld-project-type-<?php echo esc_attr($term->term_id); ?>">
+                    <input
+                        id="vld-project-type-<?php echo esc_attr($term->term_id); ?>"
+                        type="radio"
+                        name="tax_input[<?php echo esc_attr($taxonomy); ?>][]"
+                        value="<?php echo esc_attr($term->term_id); ?>"
+                        <?php checked(in_array((int) $term->term_id, $selected, true)); ?>
+                    >
+                    <?php echo esc_html($definition['name']); ?>
+                </label>
+            </p>
+        <?php endforeach; ?>
+    </div>
+    <?php
+}
+
+/**
+ * Resolve the canonical front-end filter value from the taxonomy first, then
+ * fall back to the legacy _vld_type meta used by older theme releases.
+ */
+function vld_get_project_filter_type($post_id) {
+    $definitions = vld_project_type_definitions();
+    $terms       = wp_get_object_terms(absint($post_id), 'danh_muc_du_an');
+
+    if (!is_wp_error($terms)) {
+        foreach ($terms as $term) {
+            foreach ($definitions as $legacy_value => $definition) {
+                if ($term->slug === $definition['term_slug'] || $term->name === $definition['name']) {
+                    return $legacy_value;
+                }
+            }
+        }
+    }
+
+    $legacy_value = get_post_meta(absint($post_id), '_vld_type', true);
+    return isset($definitions[$legacy_value]) ? $legacy_value : '';
+}
+
+function vld_get_project_type_label($post_id) {
+    $type        = vld_get_project_filter_type($post_id);
+    $definitions = vld_project_type_definitions();
+    return isset($definitions[$type]) ? $definitions[$type]['name'] : '';
+}
+
+/**
+ * Seed only real project types and migrate old signals without deleting any
+ * posts, terms, relationships or meta values.
+ */
+function vld_maybe_seed_default_project_terms() {
+    if (VLD_VERSION === get_option('vld_data_version')) {
+        return;
+    }
+
+    vld_register_project_cpt();
+
+    foreach (vld_project_type_definitions() as $definition) {
+        if (!term_exists($definition['name'], 'danh_muc_du_an')) {
+            wp_insert_term(
+                $definition['name'],
+                'danh_muc_du_an',
+                array('slug' => $definition['term_slug'])
+            );
+        }
+    }
+
+    $project_ids = get_posts(
+        array(
+            'post_type'              => 'du_an',
+            'post_status'            => array('publish', 'draft', 'pending', 'private'),
+            'posts_per_page'         => -1,
+            'fields'                 => 'ids',
+            'no_found_rows'          => true,
+            'update_post_meta_cache' => true,
+            'update_post_term_cache' => true,
+        )
+    );
+
+    foreach ($project_ids as $project_id) {
+        $legacy_type = get_post_meta($project_id, '_vld_type', true);
+        $definitions = vld_project_type_definitions();
+        $project_terms = wp_get_object_terms($project_id, 'danh_muc_du_an');
+        $has_canonical_type = false;
+
+        if (!is_wp_error($project_terms)) {
+            foreach ($project_terms as $project_term) {
+                foreach ($definitions as $definition) {
+                    if (
+                        $project_term->slug === $definition['term_slug']
+                        || $project_term->name === $definition['name']
+                    ) {
+                        $has_canonical_type = true;
+                        break 2;
+                    }
+                }
+            }
+        }
+
+        if (isset($definitions[$legacy_type]) && !$has_canonical_type) {
+            wp_set_object_terms(
+                $project_id,
+                $definitions[$legacy_type]['term_slug'],
+                'danh_muc_du_an',
+                true
+            );
+        }
+
+        if (has_term('Dự án Nổi bật Trang chủ', 'danh_muc_du_an', $project_id)) {
+            update_post_meta($project_id, '_vld_show_featured', '1');
+        }
+        if (
+            has_term('Dự án Mới', 'danh_muc_du_an', $project_id)
+            && !get_post_meta($project_id, '_vld_badge', true)
+        ) {
+            update_post_meta($project_id, '_vld_badge', 'badge-new');
+        }
+    }
+
+    update_option('vld_data_version', VLD_VERSION, false);
+}
+add_action('admin_init', 'vld_maybe_seed_default_project_terms');
+
+/**
+ * Keep the old _vld_type filter key synchronized when a project type changes.
+ */
+function vld_sync_project_type_legacy_meta($object_id, $terms, $tt_ids, $taxonomy) {
+    if ('danh_muc_du_an' !== $taxonomy || 'du_an' !== get_post_type($object_id)) {
+        return;
+    }
+
+    $resolved_type = '';
+    $assigned_terms = wp_get_object_terms(absint($object_id), 'danh_muc_du_an');
+    if (!is_wp_error($assigned_terms)) {
+        foreach ($assigned_terms as $assigned_term) {
+            foreach (vld_project_type_definitions() as $legacy_value => $definition) {
+                if (
+                    $assigned_term->slug === $definition['term_slug']
+                    || $assigned_term->name === $definition['name']
+                ) {
+                    $resolved_type = $legacy_value;
+                    break 2;
+                }
+            }
+        }
+    }
+
+    if ($resolved_type) {
+        update_post_meta($object_id, '_vld_type', $resolved_type);
+    } else {
+        delete_post_meta($object_id, '_vld_type');
+    }
+}
+add_action('set_object_terms', 'vld_sync_project_type_legacy_meta', 10, 4);
+
+// =====================================================
+// 9. META BOX — Project details and truthful display priorities
+// =====================================================
+function vld_add_project_meta_box($post_type) {
+    if ('du_an' === $post_type) {
+        add_meta_box(
+            'vld_project_details',
+            '1. Thông tin dự án BĐS',
+            'vld_project_meta_box_html',
+            'du_an',
+            'normal',
+            'high'
+        );
+
+        add_meta_box(
+            'vld_display_positions',
+            '2. Ưu tiên hiển thị Dự án',
+            'vld_display_positions_meta_box_html',
+            'du_an',
+            'side',
+            'high'
+        );
+    } elseif ('post' === $post_type) {
+        add_meta_box(
+            'vld_news_priority',
+            'Ưu tiên Tin tức trang chủ',
+            'vld_display_positions_meta_box_html',
+            'post',
+            'side',
+            'high'
+        );
+    }
+}
+add_action('add_meta_boxes', 'vld_add_project_meta_box');
+
+function vld_display_positions_meta_box_html($post) {
+    wp_nonce_field('vld_save_display_positions', 'vld_pos_nonce');
+
+    $show_featured = get_post_meta($post->ID, '_vld_show_featured', true);
+    $show_news     = get_post_meta($post->ID, '_vld_show_news', true);
+    $show_sidebar  = get_post_meta($post->ID, '_vld_show_sidebar', true);
+    ?>
+    <div style="padding:4px 0;font-size:13px;line-height:1.45;">
+        <?php if ('du_an' === $post->post_type) : ?>
+            <p style="margin:0 0 12px;color:#50575e;">
+                <?php esc_html_e('Dự án vẫn xuất hiện trong danh sách chính. Hai lựa chọn dưới đây chỉ đưa dự án lên trước.', 'vanlucland-developer'); ?>
+            </p>
+
+            <p style="margin:0 0 12px;">
+                <input
+                    id="vld-show-featured"
+                    type="checkbox"
+                    name="vld_show_featured"
+                    value="1"
+                    <?php checked($show_featured, '1'); ?>
+                >
+                <label for="vld-show-featured">
+                    <strong><?php esc_html_e('Ưu tiên ở Dự án trang chủ', 'vanlucland-developer'); ?></strong><br>
+                    <span style="color:#646970;"><?php esc_html_e('Xếp trước các dự án mới nhất.', 'vanlucland-developer'); ?></span>
+                </label>
+            </p>
+
+            <p style="margin:0;">
+                <input
+                    id="vld-show-sidebar"
+                    type="checkbox"
+                    name="vld_show_sidebar"
+                    value="1"
+                    <?php checked($show_sidebar, '1'); ?>
+                >
+                <label for="vld-show-sidebar">
+                    <strong><?php esc_html_e('Ưu tiên ở Sidebar dự án', 'vanlucland-developer'); ?></strong><br>
+                    <span style="color:#646970;"><?php esc_html_e('Xếp trước trong “Có thể bạn quan tâm”.', 'vanlucland-developer'); ?></span>
+                </label>
+            </p>
+        <?php else : ?>
+            <p style="margin:0 0 12px;color:#50575e;">
+                <?php esc_html_e('Bài mới vẫn được hiển thị tự động. Bật lựa chọn này để ghim bài lên trước.', 'vanlucland-developer'); ?>
+            </p>
+            <p style="margin:0;">
+                <input
+                    id="vld-show-news"
+                    type="checkbox"
+                    name="vld_show_news"
+                    value="1"
+                    <?php checked($show_news, '1'); ?>
+                >
+                <label for="vld-show-news">
+                    <strong><?php esc_html_e('Ưu tiên trong Tin tức trang chủ', 'vanlucland-developer'); ?></strong>
+                </label>
+            </p>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+function vld_project_meta_box_html($post) {
+    wp_nonce_field('vld_save_project', 'vld_project_nonce');
+
+    $price     = get_post_meta($post->ID, '_vld_price', true);
+    $area      = get_post_meta($post->ID, '_vld_area', true);
+    $location  = get_post_meta($post->ID, '_vld_location', true);
+    $developer = get_post_meta($post->ID, '_vld_developer', true);
+    $category  = get_post_meta($post->ID, '_vld_category', true);
+    $legal     = get_post_meta($post->ID, '_vld_legal', true);
+    $badge     = get_post_meta($post->ID, '_vld_badge', true);
+
+    $badges = array(
+        ''             => '— Không có —',
+        'badge-hot'    => 'HOT',
+        'badge-selling'=> 'Đang bán',
+        'badge-new'    => 'Mới',
+    );
+    ?>
+    <style>
+        .vld-meta-table th { width: 220px; font-weight: 600; vertical-align: middle; }
+        .vld-meta-table td input[type="text"] { width: 100%; max-width: 500px; padding: 6px 10px; }
+        .vld-meta-table td select { padding: 6px 10px; min-width: 250px; }
+    </style>
+    <p style="background: #e0f2fe; border-left: 4px solid #0284c7; padding: 10px 14px; margin-bottom: 15px; font-size: 13.5px;">
+        <strong>Hướng dẫn:</strong> Nhập thông tin để tự động hiển thị trong bảng thông số dự án. Chọn <strong>Loại hình dự án</strong> ở cột bên phải để dùng bộ lọc ngoài website.
+    </p>
+    <table class="form-table vld-meta-table" style="width:100%">
+        <tr>
+            <th><label>1. Tên dự án:</label></th>
+            <td><em style="color:#64748b;">(Tự động lấy theo <strong>Tiêu đề bài viết</strong> ở trên)</em></td>
+        </tr>
+        <tr>
+            <th><label for="vld_location">2. Vị trí:</label></th>
+            <td><input type="text" id="vld_location" name="vld_location" value="<?php echo esc_attr($location); ?>" placeholder="VD: Vinhomes Smart City, Tây Mỗ, Nam Từ Liêm, Hà Nội"></td>
+        </tr>
+        <tr>
+            <th><label for="vld_developer">3. Chủ đầu tư:</label></th>
+            <td><input type="text" id="vld_developer" name="vld_developer" value="<?php echo esc_attr($developer); ?>" placeholder="VD: MIK Group hoặc Văn Lực Land"></td>
+        </tr>
+        <tr>
+            <th><label for="vld_category">4. Mô tả loại hình / sản phẩm:</label></th>
+            <td>
+                <input type="text" id="vld_category" name="vld_category" value="<?php echo esc_attr($category); ?>" placeholder="VD: Căn hộ cao cấp 1–3 phòng ngủ">
+                <p class="description">Thông tin mô tả chi tiết; không dùng để phân loại hoặc lọc dự án.</p>
+            </td>
+        </tr>
+        <tr>
+            <th><label for="vld_area">5. Quy mô / Diện tích:</label></th>
+            <td><input type="text" id="vld_area" name="vld_area" value="<?php echo esc_attr($area); ?>" placeholder="VD: 5 tòa tháp, 38-39 tầng, hơn 3000 căn hộ"></td>
+        </tr>
+        <tr>
+            <th><label for="vld_legal">6. Pháp lý dự án:</label></th>
+            <td><input type="text" id="vld_legal" name="vld_legal" value="<?php echo esc_attr($legal); ?>" placeholder="VD: Sổ hồng riêng lâu dài 100%"></td>
+        </tr>
+        <tr>
+            <th><label for="vld_price">7. Giá bán chính thức:</label></th>
+            <td><input type="text" id="vld_price" name="vld_price" value="<?php echo esc_attr($price); ?>" placeholder="VD: Từ 40 triệu/m2 hoặc 3.5 tỷ/căn"></td>
+        </tr>
+        <tr>
+            <th><label for="vld_badge">Trạng thái / nhãn:</label></th>
+            <td>
+                <select id="vld_badge" name="vld_badge">
+                    <?php foreach ($badges as $val => $label) : ?>
+                        <option value="<?php echo esc_attr($val); ?>" <?php selected($badge, $val); ?>><?php echo esc_html($label); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </td>
+        </tr>
+    </table>
+    <p class="description" style="margin-top:12px;">
+        📸 <strong>Ảnh đại diện dự án:</strong> Đặt ảnh ở mục "Ảnh đại diện" (Featured Image) ở cột bên phải màn hình.
+    </p>
+    <?php
+}
+
+function vld_save_project_meta($post_id) {
+    if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+        return;
+    }
+    if (wp_is_post_revision($post_id)) {
+        return;
+    }
+    if (!current_user_can('edit_post', $post_id)) {
+        return;
+    }
+
+    $post_type = get_post_type($post_id);
+    if (!in_array($post_type, array('du_an', 'post'), true)) {
+        return;
+    }
+
+    $project_nonce = sanitize_text_field(wp_unslash($_POST['vld_project_nonce'] ?? ''));
+    if ('du_an' === $post_type && $project_nonce && wp_verify_nonce($project_nonce, 'vld_save_project')) {
+        $fields = array('price', 'area', 'location', 'developer', 'category', 'legal', 'badge');
+        foreach ($fields as $field) {
+            if (isset($_POST['vld_' . $field])) {
+                update_post_meta(
+                    $post_id,
+                    '_vld_' . $field,
+                    sanitize_text_field(wp_unslash($_POST['vld_' . $field]))
+                );
+            }
+        }
+    }
+
+    $position_nonce = sanitize_text_field(wp_unslash($_POST['vld_pos_nonce'] ?? ''));
+    if ($position_nonce && wp_verify_nonce($position_nonce, 'vld_save_display_positions')) {
+        $pos_fields = 'du_an' === $post_type
+            ? array('show_featured', 'show_sidebar')
+            : array('show_news');
+        foreach ($pos_fields as $pos) {
+            $val = isset($_POST['vld_' . $pos]) ? '1' : '0';
+            update_post_meta($post_id, '_vld_' . $pos, $val);
+        }
+    }
+}
+add_action('save_post', 'vld_save_project_meta');
+
+function vld_get_project_meta($post_id, $key) {
+    $val = get_post_meta($post_id, '_vld_' . $key, true);
+    if ('' === $val || null === $val || false === $val) {
+        $val = get_post_meta($post_id, 'vld_project_' . $key, true);
+    }
+    if ('' === $val || null === $val || false === $val) {
+        $val = get_post_meta($post_id, 'vld_' . $key, true);
+    }
+    if ('' === $val || null === $val || false === $val) {
+        if ('area' === $key) {
+            $val = get_post_meta($post_id, 'vld_project_scale', true);
+        } elseif ('location' === $key) {
+            $val = get_post_meta($post_id, 'dia_chi', true);
+        } elseif ('developer' === $key) {
+            $val = get_post_meta($post_id, 'chu_dau_tu', true);
+        } elseif ('price' === $key) {
+            $val = get_post_meta($post_id, 'gia_tu', true);
+        } elseif ('legal' === $key) {
+            $val = get_post_meta($post_id, 'phap_ly', true);
+        } elseif ('category' === $key) {
+            $type = get_post_meta($post_id, '_vld_type', true);
+            if ('dat-nen' === $type) {
+                $val = 'Đất nền sổ đỏ';
+            } elseif ('biet-thu' === $type) {
+                $val = 'Nhà phố / Biệt thự';
+            } elseif ('can-ho' === $type) {
+                $val = 'Căn hộ chung cư';
+            }
+        }
+    }
+    return $val;
+}
+
+/**
+ * Return featured/pinned items first, then fill the remaining slots with the
+ * newest content. This makes every admin priority control visible on the site
+ * without hiding ordinary recent content.
+ */
+function vld_get_prioritized_post_ids($post_type, $meta_key, $limit, $exclude_ids = array()) {
+    $post_type   = sanitize_key($post_type);
+    $meta_key    = sanitize_key($meta_key);
+    $limit       = max(1, absint($limit));
+    $exclude_ids = array_values(array_filter(array_map('absint', (array) $exclude_ids)));
+
+    $common_args = array(
+        'post_type'              => $post_type,
+        'post_status'            => 'publish',
+        'posts_per_page'         => $limit,
+        'fields'                 => 'ids',
+        'orderby'                => 'date',
+        'order'                  => 'DESC',
+        'ignore_sticky_posts'    => true,
+        'no_found_rows'          => true,
+        'update_post_meta_cache' => false,
+        'update_post_term_cache' => false,
+        'post__not_in'           => $exclude_ids,
+    );
+
+    $priority_ids = get_posts(
+        array_merge(
+            $common_args,
+            array(
+                'meta_key'   => $meta_key,
+                'meta_value' => '1',
+            )
+        )
+    );
+
+    $remaining = $limit - count($priority_ids);
+    if ($remaining < 1) {
+        return array_slice(array_map('absint', $priority_ids), 0, $limit);
+    }
+
+    $latest_ids = get_posts(
+        array_merge(
+            $common_args,
+            array(
+                'posts_per_page' => $remaining,
+                'post__not_in'   => array_values(array_unique(array_merge($exclude_ids, $priority_ids))),
+            )
+        )
+    );
+
+    return array_map('absint', array_merge($priority_ids, $latest_ids));
+}
+
+// =====================================================
+// 10. Admin Columns — Cột thông tin trong admin dự án
+// =====================================================
+function vld_project_admin_columns($columns) {
+    $new_columns = array();
+    $new_columns['cb']          = $columns['cb'];
+    $new_columns['title']       = 'Tên dự án';
+    $new_columns['vld_type']     = 'Loại hình';
+    $new_columns['vld_price']    = 'Giá';
+    $new_columns['vld_location'] = 'Vị trí';
+    $new_columns['vld_badge']    = 'Badge';
+    $new_columns['vld_priority'] = 'Ưu tiên';
+    $new_columns['thumbnail']   = 'Ảnh';
+    $new_columns['date']        = $columns['date'];
+    return $new_columns;
+}
+add_filter('manage_du_an_posts_columns', 'vld_project_admin_columns');
+
+function vld_project_admin_column_data($column, $post_id) {
+    switch ($column) {
+        case 'vld_type':
+            $type_label = vld_get_project_type_label($post_id);
+            echo esc_html($type_label ? $type_label : '—');
+            break;
+        case 'vld_price':
+            echo esc_html(vld_get_project_meta($post_id, 'price'));
+            break;
+        case 'vld_location':
+            echo esc_html(vld_get_project_meta($post_id, 'location'));
+            break;
+        case 'vld_badge':
+            $badge = vld_get_project_meta($post_id, 'badge');
+            $labels = array('badge-hot' => 'HOT', 'badge-selling' => 'Đang bán', 'badge-new' => 'Mới');
+            echo esc_html($labels[$badge] ?? '—');
+            break;
+        case 'vld_priority':
+            $priorities = array();
+            if ('1' === get_post_meta($post_id, '_vld_show_featured', true)) {
+                $priorities[] = 'Trang chủ';
+            }
+            if ('1' === get_post_meta($post_id, '_vld_show_sidebar', true)) {
+                $priorities[] = 'Sidebar';
+            }
+            echo esc_html($priorities ? implode(', ', $priorities) : '—');
+            break;
+        case 'thumbnail':
+            if (has_post_thumbnail($post_id)) {
+                echo get_the_post_thumbnail($post_id, array(60, 60));
+            } else {
+                echo '—';
+            }
+            break;
+    }
+}
+add_action('manage_du_an_posts_custom_column', 'vld_project_admin_column_data', 10, 2);
+
+// Auto Strip Image Metadata on Upload
+require_once get_template_directory() . '/inc/auto-strip-metadata.php';
+// Add Interactive Loan Calculator for Article 1715
+function vld_article_loan_calculator_script() {
+    if (!is_singular()) return;
+    ?>
+    <script>
+    function artFormat(n){ return new Intl.NumberFormat("vi-VN").format(Math.round(n)) + " đ"; }
+    function artCalculate(){
+        var pElem = document.getElementById("art-price");
+        if (!pElem) return;
+        var p = parseFloat(pElem.value) || 3000000000;
+        var r = parseFloat(document.getElementById("art-ratio").value) || 70;
+        var y = parseFloat(document.getElementById("art-years").value) || 20;
+        var promoRate = (parseFloat(document.getElementById("art-rate-promo").value) || 0) / 100;
+        var promoMonths = parseInt(document.getElementById("art-promo-months").value, 10);
+        var floatingRate = (parseFloat(document.getElementById("art-rate-floating").value) || 9.5) / 100;
+        var hasGrace = true;
+
+        document.getElementById("art-val-price").innerText = artFormat(p);
+        document.getElementById("art-val-ratio").innerText = r + "%";
+        document.getElementById("art-val-years").innerText = y + " năm (" + (y*12) + " tháng)";
+
+        var loan = p * (r/100);
+        var down = p - loan;
+        var totalMonths = y * 12;
+
+        var promoPrincipal = hasGrace ? 0 : (loan / totalMonths);
+        var promoInterest = loan * (promoRate / 12);
+        var promoMonthly = promoPrincipal + promoInterest;
+
+        var remainingMonths = totalMonths - promoMonths;
+        if (remainingMonths <= 0) remainingMonths = totalMonths;
+        var postPromoPrincipal = loan / remainingMonths;
+        var postPromoInterestFirst = loan * (floatingRate / 12);
+        var postPromoMonthly = postPromoPrincipal + postPromoInterestFirst;
+
+        document.getElementById("art-res-down").innerText = artFormat(down);
+        document.getElementById("art-res-loan").innerText = artFormat(loan);
+
+        var labelP = document.getElementById("art-label-promo");
+        var resP = document.getElementById("art-res-monthly-promo");
+        var subP = document.getElementById("art-sub-promo");
+
+        if (promoMonths > 0) {
+            if(labelP) labelP.innerText = "GIAI ĐOẠN 1 (" + promoMonths + " THÁNG ĐẦU):";
+            if(resP) resP.innerText = (promoMonthly === 0 ? "0 đ/tháng" : artFormat(promoMonthly) + "/tháng");
+            if(subP) subP.innerText = (promoRate === 0 ? "(Lãi suất 0% & Ân hạn nợ gốc)" : "(Lãi suất ưu đãi " + (promoRate*100).toFixed(1) + "%/năm)");
+        } else {
+            if(labelP) labelP.innerText = "TRẢ GỐC + LÃI THÁNG ĐẦU:";
+            if(resP) resP.innerText = artFormat(postPromoMonthly) + "/tháng";
+            if(subP) subP.innerText = "(Không áp dụng ưu đãi)";
+        }
+
+        var resF = document.getElementById("art-res-monthly-floating");
+        if(resF) resF.innerText = artFormat(postPromoMonthly) + "/tháng";
+    }
+    document.addEventListener("DOMContentLoaded", function(){ if(document.getElementById("art-price")) artCalculate(); });
+    if(document.getElementById("art-price")) artCalculate();
+    </script>
+    <?php
+}
+add_action('wp_footer', 'vld_article_loan_calculator_script', 50);
+// Google Analytics 4 & Google Tag Manager Integration Engine
+function vld_google_analytics_head() {
+    $ga4_id = vld_option('ga4_measurement_id', '');
+    $gtm_id = vld_option('gtm_container_id', '');
+
+    if (!empty($gtm_id)) {
+        ?>
+        <!-- Google Tag Manager: load after genuine user interaction. -->
+        <script>(function(w,d,i){
+        w.dataLayer=w.dataLayer||[];w.dataLayer.push({'gtm.start':Date.now(),event:'gtm.js'});
+        var loaded=false,load=function(){if(loaded)return;loaded=true;var s=d.createElement('script');
+        s.async=true;s.src='https://www.googletagmanager.com/gtm.js?id='+encodeURIComponent(i);d.head.appendChild(s);};
+        ['pointerdown','touchstart','scroll','keydown'].forEach(function(e){w.addEventListener(e,load,{once:true,passive:true});});
+        })(window,document,'<?php echo esc_js($gtm_id); ?>');</script>
+        <?php
+    } elseif (!empty($ga4_id)) {
+        ?>
+        <!-- Google tag: queue configuration now, fetch the library on interaction. -->
+        <script>(function(w,d,i){
+        w.dataLayer=w.dataLayer||[];w.gtag=w.gtag||function(){w.dataLayer.push(arguments);};
+        w.gtag('js',new Date());w.gtag('config',i);
+        var loaded=false,load=function(){if(loaded)return;loaded=true;var s=d.createElement('script');
+        s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+encodeURIComponent(i);d.head.appendChild(s);};
+        ['pointerdown','touchstart','scroll','keydown'].forEach(function(e){w.addEventListener(e,load,{once:true,passive:true});});
+        })(window,document,'<?php echo esc_js($ga4_id); ?>');</script>
+        <?php
+    }
+}
+add_action('wp_head', 'vld_google_analytics_head', 1);
+
+
+// ==========================================================================
+// OPTIMIZED SEO TITLE TAG (58 CHARACTERS GOLDEN RATIO)
+// ==========================================================================
+add_filter('pre_get_document_title', 'vld_custom_optimized_homepage_title', 99);
+function vld_custom_optimized_homepage_title($title) {
+    if (is_front_page() || is_home()) {
+        return 'Văn Lực Land – Sàn Phân Phối Dự Án Bất Động Sản Cao Cấp TP.HCM';
+    }
+    return $title;
+}
+
+add_filter('wp_img_tag_add_loading_attr', 'vld_bypass_lazyload_hero_lcp', 10, 3);
+function vld_bypass_lazyload_hero_lcp($value, $image, $context) {
+    if (strpos($image, 'no-lazy') !== false || strpos($image, 'vld-hero-lcp-img') !== false) {
+        return false; // Disable lazyload for Hero LCP
+    }
+    return $value;
+}
+
+
+// ==========================================================================
+// AUTOMATIC WEBP CONVERSION & HIGH-EFFICIENCY COMPRESSION ENGINE (78% QUALITY)
+// ==========================================================================
+add_filter('image_editor_output_format', 'vld_auto_webp_output_format', 99);
+function vld_auto_webp_output_format($formats) {
+    $formats['image/jpeg'] = 'image/webp';
+    $formats['image/png']  = 'image/webp';
+    return $formats;
+}
+
+add_filter('wp_editor_set_quality', 'vld_custom_image_quality', 99);
+add_filter('jpeg_quality', 'vld_custom_image_quality', 99);
+function vld_custom_image_quality($quality) {
+    return 78; // Google PageSpeed Sweet Spot (Ultra lightweight + High Clarity)
+}
+
+
+// ==========================================================================
+// AUTOMATED HIGH-CONVERTING SEO TITLE & META DESCRIPTION FOR ALL PROJECTS
+// ==========================================================================
+add_filter('rank_math/frontend/title', 'vld_auto_project_seo_title', 99);
+function vld_auto_project_seo_title($title) {
+    if (is_singular('du_an')) {
+        $post_id = get_the_ID();
+        $custom_title = get_post_meta($post_id, 'rank_math_title', true);
+        if (!empty($custom_title)) {
+            return class_exists('RankMath\Helper') ? \RankMath\Helper::replace_vars($custom_title, get_post($post_id)) : $custom_title;
+        }
+
+        $raw_title = get_the_title($post_id);
+        $clean_title = preg_replace('/^(Dự\s*án\s*căn\s*hộ|Dự\s*án|Căn\s*hộ)\s+/iu', '', $raw_title);
+        $clean_title = preg_replace('/[:\-–|].*$/iu', '', $clean_title);
+        $clean_title = trim($clean_title);
+
+        $location = get_post_meta($post_id, '_vld_location', true);
+        $district = '';
+        if ($location && preg_match('/(Quận\s*\d+|Nhà\s*Bè|Bình\s*Chánh|Thủ\s*Đức|Bình\s*Thạnh|Tân\s*Bình)/iu', $location, $m)) {
+            $district = ' ' . $m[1];
+        }
+
+        $current_year = wp_date('Y');
+        return "Dự Án {$clean_title}{$district}: Bảng Giá & Thông Tin {$current_year}";
+    }
+    return $title;
+}
+
+add_filter('rank_math/frontend/description', 'vld_auto_project_seo_description', 99);
+function vld_auto_project_seo_description($desc) {
+    if (is_singular('du_an')) {
+        $post_id = get_the_ID();
+        $custom_desc = get_post_meta($post_id, 'rank_math_description', true);
+        if (!empty($custom_desc)) {
+            return class_exists('RankMath\Helper') ? \RankMath\Helper::replace_vars($custom_desc, get_post($post_id)) : $custom_desc;
+        }
+
+        $raw_title = get_the_title($post_id);
+        $clean_title = preg_replace('/^(Dự\s*án\s*căn\s*hộ|Dự\s*án|Căn\s*hộ)\s+/iu', '', $raw_title);
+        $clean_title = preg_replace('/[:\-–|].*$/iu', '', $clean_title);
+        $clean_title = trim($clean_title);
+
+        $location = get_post_meta($post_id, '_vld_location', true) ?: 'TP.HCM';
+        $price = get_post_meta($post_id, '_vld_price', true) ?: 'giá tốt';
+
+        return "Thông tin dự án {$clean_title} tại {$location}: giá tham khảo {$price}, vị trí, mặt bằng, pháp lý và tiến độ. Kiểm tra dữ liệu mới trước khi giao dịch.";
+    }
+    return $desc;
+}
+
+/**
+ * Keep search snippets concise and provide factual fallbacks for the few
+ * taxonomy hubs that do not yet have an editorial description in Rank Math.
+ */
+function vld_normalize_search_description($description) {
+    if (is_category() || is_tax()) {
+        $term = get_queried_object();
+        $fallbacks = array(
+            'tai-chinh-lai-suat' => 'Cập nhật lãi suất vay mua nhà, cách tính dòng tiền, lịch trả nợ và các lưu ý khi so sánh gói vay ngân hàng dành cho người mua bất động sản.',
+            'dat-nen-du-an'      => 'Danh sách và phân tích dự án đất nền: vị trí, quy hoạch, pháp lý, tiến độ hạ tầng, giá tham khảo và các hồ sơ cần kiểm tra trước khi giao dịch.',
+            'du-an-moi'          => 'Tổng hợp dự án bất động sản mới được Văn Lực Land theo dõi, kèm thông tin vị trí, sản phẩm, tiến độ, pháp lý và giá tham khảo theo từng thời điểm.',
+        );
+        if (
+            (!$description || '' === trim(wp_strip_all_tags((string) $description)))
+            && $term instanceof WP_Term
+            && isset($fallbacks[$term->slug])
+        ) {
+            $description = $fallbacks[$term->slug];
+        }
+    }
+
+    $description = trim(preg_replace('/\s+/u', ' ', html_entity_decode(wp_strip_all_tags((string) $description), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+    if (function_exists('mb_strlen') && mb_strlen($description, 'UTF-8') > 160) {
+        $description = wp_html_excerpt($description, 157, '…');
+    } elseif (strlen($description) > 160) {
+        $description = wp_html_excerpt($description, 157, '…');
+    }
+
+    return $description;
+}
+add_filter('rank_math/frontend/description', 'vld_normalize_search_description', 999);
+
+
+// Bảng Tính Lãi Vay Mua Nhà
+require_once VLD_DIR . '/inc/loan-calculator-tool.php';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Early vldData and Mobile Optimizations & Global Typography & 2-Column Grid
+add_action("wp_head", function() {
+    $data = array(
+        "ajaxUrl" => admin_url("admin-ajax.php"),
+        "nonce"   => wp_create_nonce("vld_nonce"),
+        "siteUrl" => home_url("/")
+    );
+    echo "<script>window.vldData = " . json_encode($data) . ";</script>";
+    echo "<style>
+:root {
+    --font-heading: Montserrat, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif !important;
+    --font-body: Roboto, -apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif !important;
+}
+body, p, ul, ol, li, input, textarea, select, table, td, th {
+    font-family: var(--font-body) !important;
+}
+h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6, .card-title, .section-title, .nav-menu, .btn, .specs-label, .price-val, .logo-text strong {
+    font-family: var(--font-heading) !important;
+}
+
+/* Accessibility & Mobile Drawer Visibility */
+#mobile-menu:not(.active),
+.mobile-menu:not(.active) {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+#mobile-menu.active,
+.mobile-menu.active {
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+@media (max-width: 1023px) {
+    #top-bar { display: none !important; }
+    #header, #header.scrolled {
+        position: sticky !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 60px !important;
+        min-height: 60px !important;
+        max-height: 60px !important;
+        background: #ffffff !important;
+        z-index: 1000 !important;
+        display: flex !important;
+        align-items: center !important;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08) !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    .header-inner {
+        height: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        padding: 0 16px !important;
+    }
+    .logo, .logo a {
+        display: flex !important;
+        align-items: center !important;
+        text-decoration: none !important;
+        height: 100% !important;
+        max-height: 48px !important;
+        overflow: visible !important;
+    }
+    .logo-brand {
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+    }
+    .logo-icon {
+        width: 36px !important;
+        height: 36px !important;
+        min-width: 36px !important;
+        min-height: 36px !important;
+        font-size: 16px !important;
+        border-radius: 8px !important;
+        background: linear-gradient(135deg, #0F2C59, #1a4282) !important;
+        color: #d4af37 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex-shrink: 0 !important;
+    }
+    .logo-text {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+        line-height: 1.1 !important;
+    }
+    .logo-text strong {
+        font-size: 15px !important;
+        font-weight: 800 !important;
+        color: #0F2C59 !important;
+        letter-spacing: 0.5px !important;
+        white-space: nowrap !important;
+        line-height: 1.1 !important;
+    }
+    .logo-text small {
+        font-size: 8px !important;
+        font-weight: 600 !important;
+        color: #d4af37 !important;
+        letter-spacing: 1.5px !important;
+        white-space: nowrap !important;
+        line-height: 1 !important;
+        margin-top: 1px !important;
+    }
+    #main-nav { display: none !important; }
+    #hamburger {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-around !important;
+        width: 44px !important;
+        height: 44px !important;
+        background: transparent !important;
+        border: none !important;
+        cursor: pointer !important;
+        padding: 9px !important;
+        z-index: 1001 !important;
+        pointer-events: auto !important;
+        touch-action: manipulation !important;
+        -webkit-tap-highlight-color: transparent !important;
+        user-select: none !important;
+    }
+    #hamburger span {
+        width: 24px !important;
+        height: 2.5px !important;
+        background-color: #0F2C59 !important;
+        border-radius: 4px !important;
+        transition: transform 0.25s ease, opacity 0.25s ease !important;
+        display: block !important;
+        pointer-events: none !important;
+    }
+    #hamburger.active span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px) !important; }
+    #hamburger.active span:nth-child(2) { opacity: 0 !important; }
+    #hamburger.active span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px) !important; }
+
+    body { padding-bottom: 60px !important; }
+    body.menu-open { overflow: hidden !important; }
+    
+    .vld-mobile-sticky-bar {
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 56px !important;
+        background: #ffffff !important;
+        box-shadow: 0 -3px 12px rgba(0, 0, 0, 0.1) !important;
+        z-index: 99999 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-around !important;
+        padding: 4px 8px !important;
+        border-top: 1px solid #e2e8f0 !important;
+    }
+    .vld-mobile-sticky-bar a {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        text-decoration: none !important;
+        flex: 1 !important;
+        height: 100% !important;
+        padding: 3px 2px !important;
+        border-radius: 6px !important;
+    }
+    .vld-mobile-sticky-bar a.vld-sticky-call {
+        background: #0F2C59 !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        margin: 0 3px !important;
+    }
+    .vld-mobile-sticky-bar a.vld-sticky-zalo {
+        background: #0068FF !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        margin: 0 3px !important;
+    }
+    .vld-mobile-sticky-bar a.vld-sticky-calc {
+        background: #f8fafc !important;
+        color: #0F2C59 !important;
+        font-weight: 600 !important;
+        border: 1px solid #cbd5e1 !important;
+        margin: 0 3px !important;
+    }
+    .vld-mobile-sticky-bar a i { font-size: 15px !important; margin-bottom: 2px !important; }
+    .vld-mobile-sticky-bar a span { font-size: 10.5px !important; line-height: 1 !important; }
+
+    
+.card-category, span.card-category {
+    color: #0F2C59 !important;
+    font-weight: 700 !important;
+}
+.post-date, time.post-date, .archive-card__meta time {
+    color: #334155 !important;
+    font-weight: 600 !important;
+}
+
+/* 2-COLUMN PROJECT GRID FOR MOBILE - ZERO GAP */
+    .portal-layout .main-col {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    #du-an .project-grid,
+    .project-grid,
+    #project-grid,
+    .projects-grid,
+    .archive-grid {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+        width: 100% !important;
+    }
+    .project-card, .archive-card {
+        width: 100% !important;
+        min-width: 0 !important;
+        border-radius: 8px !important;
+        overflow: hidden !important;
+        background: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        margin: 0 0 4px 0 !important;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;
+    }
+    html body #du-an .project-card .card-image,
+    html body .project-card .card-image,
+    html body .archive-card .card-image,
+    html body .archive-card__media {
+        height: auto !important;
+        min-height: 0px !important;
+        max-height: none !important;
+        aspect-ratio: 16 / 10.5 !important;
+        width: 100% !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+        position: relative !important;
+        overflow: hidden !important;
+    }
+    html body #du-an .project-card .card-image a,
+    html body .project-card .card-image a,
+    html body .archive-card .card-image a,
+    html body .archive-card__media a {
+        height: 100% !important;
+        min-height: 0px !important;
+        width: 100% !important;
+        display: block !important;
+        position: relative !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    html body #du-an .project-card .card-image img,
+    html body .project-card .card-image img,
+    html body .archive-card .card-image img,
+    html body .archive-card__media img {
+        height: 100% !important;
+        width: 100% !important;
+        object-fit: cover !important;
+        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .project-card .card-badge {
+        position: absolute !important;
+        top: 6px !important;
+        left: 6px !important;
+        font-size: 9px !important;
+        padding: 2px 6px !important;
+        border-radius: 4px !important;
+        font-weight: 700 !important;
+        z-index: 2 !important;
+        line-height: 1.2 !important;
+    }
+    .project-card .card-body, .archive-card__body {
+        padding: 8px 6px 8px 6px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        flex: 1 !important;
+    }
+    .project-card .card-category, .archive-card__meta {
+        font-size: 8.5px !important;
+        color: #64748b !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        margin-bottom: 2px !important;
+        display: block !important;
+        line-height: 1.2 !important;
+    }
+    .project-card .card-title, .archive-card__title {
+        font-size: 11.5px !important;
+        font-weight: 700 !important;
+        line-height: 1.25 !important;
+        margin: 0 0 4px 0 !important;
+        color: #0F2C59 !important;
+        display: -webkit-box !important;
+        -webkit-line-clamp: 2 !important;
+        -webkit-box-orient: vertical !important;
+        overflow: hidden !important;
+        min-height: 28px !important;
+    }
+    .project-card .card-title a, .archive-card__title a {
+        color: #0F2C59 !important;
+        text-decoration: none !important;
+    }
+    .project-card .card-meta {
+        font-size: 10px !important;
+        color: #64748b !important;
+        margin-bottom: 4px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 2px !important;
+    }
+    .project-card .card-meta span {
+        font-size: 9.5px !important;
+        line-height: 1.2 !important;
+        display: -webkit-box !important;
+        -webkit-line-clamp: 1 !important;
+        -webkit-box-orient: vertical !important;
+        overflow: hidden !important;
+        white-space: normal !important;
+    }
+    .project-card .card-price {
+        font-size: 10px !important;
+        font-weight: 700 !important;
+        color: #C41E3A !important;
+        margin-top: auto !important;
+        padding-top: 4px !important;
+        border-top: 1px dashed #e2e8f0 !important;
+        line-height: 1.2 !important;
+    }
+    .project-card .card-price strong {
+        font-size: 11px !important;
+        color: #C41E3A !important;
+    }
+    .archive-card__excerpt, .archive-card__link {
+        display: none !important;
+    }
+}
+
+/* Universal Back To Top Button */
+#back-to-top, .back-to-top {
+    position: fixed !important;
+    bottom: 72px !important;
+    right: 16px !important;
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    border-radius: 50% !important;
+    background: #0F2C59 !important;
+    color: #ffffff !important;
+    border: 2px solid rgba(255, 255, 255, 0.25) !important;
+    box-shadow: 0 4px 14px rgba(15, 44, 89, 0.35) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    z-index: 99990 !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transform: scale(0.8) translateY(10px) !important;
+    transition: opacity 0.25s ease, visibility 0.25s ease, transform 0.25s ease, background 0.2s ease !important;
+    pointer-events: none !important;
+    padding: 0 !important;
+}
+#back-to-top.visible, .back-to-top.visible {
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: scale(1) translateY(0) !important;
+    pointer-events: auto !important;
+}
+#back-to-top:hover, #back-to-top:active {
+    background: #1e40af !important;
+    transform: scale(1.08) translateY(-2px) !important;
+}
+@media (min-width: 1024px) {
+    .vld-mobile-sticky-bar { display: none !important; }
+    #back-to-top, .back-to-top {
+        bottom: 28px !important;
+        right: 28px !important;
+    }
+}
+</style>";
+}, 1);
+
+
+
+
+// Automatically set tabindex="-1" on initial mobile menu links for accessibility
+add_filter("nav_menu_link_attributes", function($atts, $item, $args) {
+    if (isset($args->theme_location) && $args->theme_location === "mobile") {
+        $atts["tabindex"] = "-1";
+    }
+    return $atts;
+}, 10, 3);
+
+// Dequeue unneeded sign-in-with-google frontend script to prevent console errors
+add_action("wp_enqueue_scripts", function() {
+    wp_dequeue_script("googlesitekit-sign-in-with-google");
+}, 999);
+
+
+
+// 2. High-Contrast Active Menu Indicator
+add_action("wp_head", function() {
+    echo "<style>
+#main-nav .nav-menu li.current-menu-item > a,
+#main-nav .nav-menu li.current_page_item > a,
+#main-nav .nav-menu li.active > a {
+    color: #0F2C59 !important;
+    font-weight: 800 !important;
+    border-bottom: 2.5px solid #0F2C59 !important;
+}
+</style>";
+}, 999);
+
+
+
+add_action("wp_head", function() { echo "<style>
+/* ==========================================================================
+   PIXEL-PERFECT 2-COLUMN MOBILE PROJECT GRID ALIGNMENT & COMPACT SPACING
+   ========================================================================== */
+@media (max-width: 1023px) {
+    .portal-layout .main-col {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    #du-an .project-grid,
+    .project-grid,
+    #project-grid,
+    .projects-grid,
+    .archive-grid {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+        width: 100% !important;
+    }
+    .project-card, .archive-card {
+        width: 100% !important;
+        min-width: 0 !important;
+        border-radius: 8px !important;
+        overflow: hidden !important;
+        background: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        margin: 0 !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+    }
+    html body #du-an .project-card .card-image,
+    html body .project-card .card-image,
+    html body .archive-card .card-image {
+        height: auto !important;
+        min-height: 0px !important;
+        aspect-ratio: 16 / 10.5 !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+        position: relative !important;
+        overflow: hidden !important;
+    }
+    .project-card .card-image img,
+    .archive-card .card-image img {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .project-card .card-badge {
+        position: absolute !important;
+        top: 6px !important;
+        left: 6px !important;
+        font-size: 8.5px !important;
+        padding: 2px 5px !important;
+        border-radius: 4px !important;
+        font-weight: 700 !important;
+        z-index: 2 !important;
+        line-height: 1.2 !important;
+    }
+    .project-card .card-body, .archive-card__body {
+        padding: 8px 8px 6px 8px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        flex: 1 1 auto !important;
+        gap: 0 !important;
+    }
+    /* 1. Category Tag: Exactly 1 line, uniform height */
+    .project-card .card-category,
+    span.card-category,
+    .archive-card__meta {
+        font-size: 9px !important;
+        font-weight: 700 !important;
+        color: #8a6d05 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.2px !important;
+        height: 14px !important;
+        line-height: 14px !important;
+        min-height: 14px !important;
+        max-height: 14px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        display: block !important;
+        margin: 0 0 3px 0 !important;
+    }
+    /* 2. Project Title: Exactly 2 lines, uniform 32px height across all cards */
+    .project-card .card-title,
+    .archive-card__title {
+        font-size: 12px !important;
+        font-weight: 800 !important;
+        line-height: 16px !important;
+        height: 32px !important;
+        min-height: 32px !important;
+        max-height: 32px !important;
+        margin: 0 0 4px 0 !important;
+        color: #0F2C59 !important;
+        display: -webkit-box !important;
+        -webkit-line-clamp: 2 !important;
+        -webkit-box-orient: vertical !important;
+        overflow: hidden !important;
+    }
+    .project-card .card-title a,
+    .archive-card__title a {
+        color: #0F2C59 !important;
+        text-decoration: none !important;
+    }
+    /* 3. Card Meta: Fixed 38px height (Location 2 lines + Area 1 line) */
+    .project-card .card-meta {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 2px !important;
+        margin: 0 0 4px 0 !important;
+        height: 38px !important;
+        min-height: 38px !important;
+        max-height: 38px !important;
+        overflow: hidden !important;
+    }
+    .project-card .card-meta span.card-location {
+        font-size: 9.5px !important;
+        line-height: 13px !important;
+        height: 26px !important;
+        max-height: 26px !important;
+        color: #475569 !important;
+        display: -webkit-box !important;
+        -webkit-line-clamp: 2 !important;
+        -webkit-box-orient: vertical !important;
+        overflow: hidden !important;
+        white-space: normal !important;
+    }
+    .project-card .card-meta span.card-area {
+        font-size: 9.5px !important;
+        line-height: 12px !important;
+        height: 12px !important;
+        color: #475569 !important;
+        display: block !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+    /* 4. Bottom Price Tag: Equal bottom baseline */
+    .project-card .card-price {
+        margin-top: auto !important;
+        padding-top: 4px !important;
+        border-top: 1px dashed #e2e8f0 !important;
+        height: 20px !important;
+        min-height: 20px !important;
+        line-height: 16px !important;
+        display: flex !important;
+        align-items: center !important;
+        font-size: 10px !important;
+        color: #C41E3A !important;
+        font-weight: 700 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+    .project-card .card-price strong {
+        font-size: 10.5px !important;
+        color: #C41E3A !important;
+        font-weight: 800 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+    .archive-card__excerpt, .archive-card__link {
+        display: none !important;
+    }
+}
+</style>"; }, 999);
+
+// PageSpeed: Defer non-critical scripts
+add_filter("script_loader_tag", function($tag, $handle, $src) {
+    if (is_admin()) return $tag;
+    if (strpos($src, "googletagmanager.com") !== false || strpos($src, "google-analytics.com") !== false) {
+        if (strpos($tag, "defer") === false && strpos($tag, "async") === false) {
+            $tag = str_replace("<script ", "<script defer ", $tag);
+        }
+    }
+    return $tag;
+}, 10, 3);
+
+// PageSpeed: Load Google Tag Manager / Site Kit after user interaction or idle
+add_filter("script_loader_tag", function($tag, $handle, $src) {
+    if (is_admin()) return $tag;
+    if ($handle === "google_gtagjs-js" || strpos($src, "googletagmanager.com/gtag/js") !== false) {
+        return "<script>
+(function() {
+    var loaded = false;
+    function initGTM() {
+        if (loaded) return;
+        loaded = true;
+        var s = document.createElement(\"script\");
+        s.src = \"" . esc_url($src) . "\";
+        s.async = true;
+        document.head.appendChild(s);
+    }
+    [\"scroll\", \"touchstart\", \"mousemove\", \"keydown\", \"click\"].forEach(function(e) {
+        window.addEventListener(e, initGTM, {once: true, passive: true});
+    });
+    if (\"requestIdleCallback\" in window) {
+        requestIdleCallback(function() { setTimeout(initGTM, 3500); });
+    } else {
+        setTimeout(initGTM, 4000);
+    }
+})();
+</script>";
+    }
+    return $tag;
+}, 999, 3);
+
+/**
+ * Clean & optimize archive titles (Remove "Lưu trữ: " prefix, set custom H1 for Projects)
+ */
+add_filter("get_the_archive_title", function ($title) {
+    if (is_post_type_archive("du_an")) {
+        return "Dự Án Bất Động Sản Đang Phân Phối Tại TP.HCM";
+    }
+    if (is_category() || is_tag() || is_tax()) {
+        return single_term_title("", false);
+    }
+    if (is_author()) {
+        return "Tác giả: " . get_the_author();
+    }
+    return $title;
+});
+
+add_action("wp_head", function() {
+    echo "<style id=\"vld-project-pagination-css\">.project-card.vld-hidden{display:none!important;}</style>\n";
+}, 9999);
+
+
+// Disable unused Sign In With Google web tag on frontend to eliminate console error
+add_filter("googlesitekit_sign-in-with-google_tag_blocked", "__return_true");
+
+add_action('wp_head', function() {
+    echo '<style id="vld-whitespace-tighten-css">
+.project-topic-navigation {
+    margin: 8px 0 4px 0 !important;
+    padding: 8px 12px !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    background: #ffffff !important;
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 8px 10px !important;
+}
+.project-topic-navigation h2,
+.project-topic-navigation .topic-nav-title {
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    color: #0f2c59 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+}
+.project-topic-navigation a {
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 4px 10px !important;
+    border-radius: 6px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+}
+.vanluc-sales-landing {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+}
+.single-project-page .main-col {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+}
+.single-post-page .main-col {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+}
+.portal-layout.single-project-layout {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+}
+@media (max-width: 768px) {
+    .vanluc-sales-landing {
+        padding-top: 6px !important;
+        padding-bottom: 8px !important;
+    }
+    .project-topic-navigation {
+        padding: 6px 10px !important;
+        margin: 6px 0 2px 0 !important;
+        gap: 6px 8px !important;
+    }
+    .project-topic-navigation a {
+        padding: 3px 8px !important;
+        font-size: 11px !important;
+    }
+}
+</style>' . "
+";
+}, 9999);
+
+
+/**
+ * Disable WordPress auto-sizes on lazy-loaded images to prevent high-DPR mobile devices
+ * from picking oversized srcset candidates when explicit sizes attributes are configured.
+ */
+add_filter('wp_img_tag_add_auto_sizes', '__return_false');
+
+
+/**
+ * Automatically replace dynamic placeholders like %currentyear% in frontend titles, excerpts and content
+ */
+function vld_parse_frontend_dynamic_tags($text) {
+    if (!is_string($text) || false === strpos($text, '%')) {
+        return $text;
+    }
+    return str_replace(
+        ['%currentyear%', '%currentmonth%', '%currentdate%'],
+        [date('Y'), date('m'), date('d/m/Y')],
+        $text
+    );
+}
+add_filter('the_title', 'vld_parse_frontend_dynamic_tags', 20);
+add_filter('the_excerpt', 'vld_parse_frontend_dynamic_tags', 20);
+add_filter('get_the_excerpt', 'vld_parse_frontend_dynamic_tags', 20);
+add_filter('the_content', 'vld_parse_frontend_dynamic_tags', 20);
